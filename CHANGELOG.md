@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-03-27 19:06:11 IST
+- Added a standard repository `README.md` covering architecture, setup, local simulation, container execution, Windows worker onboarding, configuration, API usage, and verification flow. Files: `README.md`
+- Updated the PRD directory tree and implementation snapshot to include the standard project README. Files: `PRD.md`, `CHANGELOG.md`
+
 ## 2026-03-27 19:02:08 IST
 - Hardened the worker container for deployment by enabling unbuffered logging and a native Docker health check, then validated the image build on `python:3.14-slim` with Flask 3.1.3, scikit-learn 1.8.0, and Waitress 3.0.2. Files: `worker/Dockerfile`
 - Added a Windows onboarding script that can set the active network to `Private`, create or refresh the inbound firewall rule, optionally build or pull the worker image, launch the worker container, and verify `/health` locally. Files: `scripts/windows/onboard_worker.ps1`

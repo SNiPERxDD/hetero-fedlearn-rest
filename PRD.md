@@ -120,6 +120,7 @@ To eliminate hardware and OS variables during development, the implementation mu
 ```text
 project_root/
 │
+├── README.md                 # Standard project documentation and onboarding guide
 ├── CHANGELOG.md              # Concise implementation history with timestamps
 ├── config.json               # Defines total rounds, epochs, and worker endpoints
 ├── pyproject.toml            # Pytest configuration for local verification
@@ -147,3 +148,4 @@ project_root/
 *   **Verification Coverage:** `tests/test_federated_workflow.py` exercises worker pre-initialization failure handling and a real two-worker HTTP training session that reaches 0.9737 validation accuracy on the default config.
 *   **Container Packaging:** `worker/Dockerfile` now includes a container health check and has been validated against Python 3.14-slim, Flask 3.1, scikit-learn 1.8, and Waitress 3.0.
 *   **Windows Onboarding:** `scripts/windows/onboard_worker.ps1` automates the inbound firewall rule, optional network profile hardening to `Private`, optional image build/pull, worker container startup, and local `/health` verification.
+*   **Standard Documentation:** `README.md` now provides a conventional operator-facing entry point for setup, local simulation, container validation, Windows onboarding, and verification.
