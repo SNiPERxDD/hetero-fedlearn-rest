@@ -1,0 +1,35 @@
+{
+  "dataset": {
+    "source": "builtin",
+    "name": "breast_cancer",
+    "validation_fraction": 0.2
+  },
+  "model": {
+    "loss": "log_loss",
+    "alpha": 0.0001,
+    "eta0": 0.001,
+    "learning_rate": "constant",
+    "penalty": "l2",
+    "random_state": 42
+  },
+  "training": {
+    "rounds": 10,
+    "local_epochs": 5,
+    "random_seed": 42
+  },
+  "network": {
+    "timeout_seconds": 120,
+    "retry_attempts": 3,
+    "retry_backoff_seconds": 1.0
+  },
+  "workers": [
+    {
+      "worker_id": "worker_1",
+      "endpoint": "http://127.0.0.1:5001"
+    },
+    {
+      "worker_id": "worker_2",
+      "endpoint": "http://127.0.0.1:5002"
+    }
+  ]
+}
