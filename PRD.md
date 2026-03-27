@@ -123,6 +123,9 @@ project_root/
 ├── CHANGELOG.md              # Concise implementation history with timestamps
 ├── config.json               # Defines total rounds, epochs, and worker endpoints
 ├── pyproject.toml            # Pytest configuration for local verification
+├── scripts/
+│   └── windows/
+│       └── onboard_worker.ps1     # Windows worker bootstrap for firewall and container startup
 ├── master/
 │   ├── __init__.py           # Package export surface
 │   ├── master.py             # Orchestration, partitioning, scaling, retries, FedAvg
@@ -142,4 +145,5 @@ project_root/
 *   **Phase 1 Local Simulation:** Implemented via `master/master.py` and `worker/worker.py` using two localhost worker endpoints, fixed data shards, JSON-safe NumPy serialization, and weighted FedAvg aggregation.
 *   **Default Runtime Configuration:** `config.json` ships with a deterministic breast cancer dataset setup, 10 communication rounds, 5 local epochs, 120 second HTTP timeouts, and 3 retry attempts per worker request.
 *   **Verification Coverage:** `tests/test_federated_workflow.py` exercises worker pre-initialization failure handling and a real two-worker HTTP training session that reaches 0.9737 validation accuracy on the default config.
-*   **Container Packaging:** `worker/Dockerfile` is present for Phase 2 deployment. Image build verification requires a running Docker daemon in the target environment.
+*   **Container Packaging:** `worker/Dockerfile` now includes a container health check and has been validated against Python 3.14-slim, Flask 3.1, scikit-learn 1.8, and Waitress 3.0.
+*   **Windows Onboarding:** `scripts/windows/onboard_worker.ps1` automates the inbound firewall rule, optional network profile hardening to `Private`, optional image build/pull, worker container startup, and local `/health` verification.
