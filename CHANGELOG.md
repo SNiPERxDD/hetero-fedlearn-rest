@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-04-04 00:39:48 IST
+- Refined the README presentation to match the current repository state with cleaner hierarchy, compact operator tables, restrained icon markers, and clearer scan paths for launch, cleanup, deployment, and verification. Files: `README.md`, `CHANGELOG.md`
+
 ## 2026-04-04 00:36:43 IST
 - Moved the PRD source files out of the repo root into `archive/` and updated the README repository layout so the archive location is reflected in the operator-facing documentation. Files: `archive/PRD.md`, `archive/PRD_Extended.md`, `README.md`, `CHANGELOG.md`
 
