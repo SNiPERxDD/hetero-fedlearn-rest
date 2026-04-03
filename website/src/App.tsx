@@ -13,7 +13,7 @@ type FeatureCard = {
 const heroMetrics: Metric[] = [
   { label: "Modes", value: "2", detail: "Baseline runtime plus DFS-lite extension." },
   { label: "Validation", value: "0.9737", detail: "Verified end-to-end accuracy on the default extended run." },
-  { label: "Tests", value: "20", detail: "Backend, browser, onboarding, control-plane, Docker-backed, and smoke coverage." },
+  { label: "Tests", value: "22", detail: "Backend, browser, onboarding, control-plane, Docker-backed, and smoke coverage." },
   { label: "Workers", value: "HTTP", detail: "Heterogeneous workers communicate through retry-aware REST calls." },
 ];
 
@@ -42,8 +42,8 @@ const dfsCards: FeatureCard[] = [
   },
   {
     title: "Bootstrap Path",
-    description: "The repo now ships explicit operator launchers for macOS/Linux, Windows batch startup, and Windows firewall onboarding.",
-    bullets: ["start_dashboard.py", "start_master.sh", "start_worker.bat"]
+    description: "The repo now ships Python-first operator launchers for cross-platform master and worker startup, plus compatibility wrappers and Windows firewall onboarding.",
+    bullets: ["start_dashboard.py", "start_master.py", "start_worker.py"]
   }
 ];
 
@@ -88,7 +88,9 @@ const repoTree = [
   "config.json",
   "config_extended.json",
   "start_dashboard.py",
+  "start_master.py",
   "start_master.sh",
+  "start_worker.py",
   "start_worker.bat",
   "scripts/windows/onboard_worker.ps1",
   "tests/test_federated_workflow.py",
@@ -104,11 +106,11 @@ const commands = [
   },
   {
     title: "DFS-lite Master",
-    command: "python3 -m master.master_dfs --config config_extended.json --host 127.0.0.1 --port 18080 --auto-start"
+    command: "python3 start_master.py --allow-unsupported-python --config config_extended.json --host 127.0.0.1 --port 18080"
   },
   {
     title: "DFS-lite Worker",
-    command: "python3 -m worker.worker_dfs --port 5001 --worker-id worker_1 --storage-dir /tmp/hetero-fedlearn-worker-1"
+    command: "python3 start_worker.py --mode native --allow-unsupported-python --worker-id worker_1 --port 5001 --storage-dir /tmp/hetero-fedlearn-worker-1"
   },
   {
     title: "Python Quick Start",
@@ -327,12 +329,12 @@ function App() {
               <p>`start_dashboard.py` launches local worker containers, waits for health, forwards the master config, and removes containers on exit.</p>
             </article>
             <article className="operator-card">
-              <h3>Master Control Plane</h3>
-              <p>The master dashboard can now register workers, upload a CSV dataset, update training settings, and start the asynchronous federated loop directly from the browser.</p>
+              <h3>Cross-Platform Master</h3>
+              <p>`start_master.py` provisions the DFS-lite master on Windows, macOS, or Linux without depending on the legacy shell wrapper.</p>
             </article>
             <article className="operator-card">
-              <h3>Worker Self-Registration</h3>
-              <p>The worker dashboard can register itself with the master by posting its advertised endpoint, while Windows onboarding still handles firewall and container startup.</p>
+              <h3>Cross-Platform Worker</h3>
+              <p>`start_worker.py` supports a native macOS/Linux worker path and a Docker-backed worker path, while the worker dashboard still supports self-registration into the master.</p>
             </article>
           </div>
         </section>
@@ -345,7 +347,7 @@ function App() {
           <div className="validation-layout">
             <div className="verification-panel">
               <span className="panel-tag">Verification Summary</span>
-              <strong>20 passed</strong>
+              <strong>22 passed</strong>
               <p>Backend, browser, onboarding, Docker-backed, and smoke-run coverage are all included in the current repository validation path.</p>
               <ul>
                 {validationItems.map((item) => (

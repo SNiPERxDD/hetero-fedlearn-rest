@@ -28,6 +28,8 @@ def test_website_copy_references_real_project_entry_points() -> None:
 
     assert "Hetero FedLearn REST" in app_text
     assert "python3 start_dashboard.py --allow-unsupported-python --master-port 18080" in app_text
+    assert "start_master.py" in app_text
+    assert "start_worker.py" in app_text
     assert "start_worker.bat" in app_text
     assert "scripts/windows/onboard_worker.ps1" in app_text
-    assert "20 passed" in app_text
+    assert "22 passed" in app_text

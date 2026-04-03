@@ -9,23 +9,34 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_start_master_shell_script_is_valid_bash() -> None:
-    """The master bootstrap script must parse and preserve the DFS-lite entrypoint."""
+def test_start_master_python_launcher_compiles_and_declares_contract() -> None:
+    """The Python master launcher must provision a venv and launch the DFS-lite master."""
+
+    script_path = REPO_ROOT / "start_master.py"
+    subprocess.run(["python3", "-m", "py_compile", str(script_path)], check=True, capture_output=True, text=True)
+
+    script_text = script_path.read_text(encoding="utf-8")
+    assert "Python 3.14+ is required for start_master.py" in script_text
+    assert '"--skip-install"' in script_text
+    assert '"--no-open-browser"' in script_text
+    assert '"--no-auto-start"' in script_text
+    assert '"master" / "requirements_extended.txt"' in script_text
+    assert '"master.master_dfs"' in script_text
+    assert '"18080"' in script_text
+
+
+def test_start_master_shell_script_delegates_to_python_launcher() -> None:
+    """The legacy shell launcher must forward to the Python master bootstrap."""
 
     script_path = REPO_ROOT / "start_master.sh"
     subprocess.run(["bash", "-n", str(script_path)], check=True, capture_output=True, text=True)
 
     script_text = script_path.read_text(encoding="utf-8")
-    assert "Python 3.14+ is required for start_master.sh" in script_text
-    assert 'CONFIG_PATH="${CONFIG_PATH:-$ROOT_DIR/config_extended.json}"' in script_text
-    assert 'MASTER_PORT="${MASTER_PORT:-18080}"' in script_text
-    assert "--config \"$CONFIG_PATH\"" in script_text
-    assert "--auto-start" in script_text
-    assert "master/requirements_extended.txt" in script_text
+    assert 'exec "$PYTHON_BIN" "$ROOT_DIR/start_master.py" "$@"' in script_text
 
 
 def test_start_dashboard_python_launcher_compiles_and_declares_contract() -> None:
-    """The dashboard quick-start launcher must build workers and chain into the master bootstrap."""
+    """The dashboard quick-start launcher must build workers and chain into the Python master bootstrap."""
 
     script_path = REPO_ROOT / "start_dashboard.py"
     subprocess.run(["python3", "-m", "py_compile", str(script_path)], check=True, capture_output=True, text=True)
@@ -38,7 +49,23 @@ def test_start_dashboard_python_launcher_compiles_and_declares_contract() -> Non
     assert 'ensure_port_available' in script_text
     assert 'wait_for_worker_health' in script_text
     assert 'start_dashboard.py only supports localhost worker endpoints' in script_text
-    assert 'start_master.sh' in script_text
+    assert 'start_master.py' in script_text
+
+
+def test_start_worker_python_launcher_compiles_and_declares_contract() -> None:
+    """The Python worker launcher must support both native and Docker worker startup."""
+
+    script_path = REPO_ROOT / "start_worker.py"
+    subprocess.run(["python3", "-m", "py_compile", str(script_path)], check=True, capture_output=True, text=True)
+
+    script_text = script_path.read_text(encoding="utf-8")
+    assert '"--mode"' in script_text
+    assert '"native"' in script_text
+    assert '"docker"' in script_text
+    assert '"worker.worker_dfs"' in script_text
+    assert '"worker" / "requirements.txt"' in script_text
+    assert 'wait_for_worker_health' in script_text
+    assert 'DFS-lite worker started on http://127.0.0.1:' in script_text
 
 
 def test_windows_batch_onboarding_contract_is_present() -> None:

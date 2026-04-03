@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-04-04 00:03:00 IST
+- Added Python-first cross-platform launchers for the DFS-lite control plane: `start_master.py` for the master, `start_worker.py` for native or Docker worker startup, and updated `start_dashboard.py` or `start_master.sh` so the dashboard bootstrap now chains into the Python master launcher while the shell script remains a compatibility wrapper. Files: `start_master.py`, `start_worker.py`, `start_dashboard.py`, `start_master.sh`, `CHANGELOG.md`
+- Expanded onboarding verification and operator documentation for role-swapped deployments, updated `.gitignore` for launcher-generated environments or storage, and refreshed the website copy to reflect the new Python entry points and the `22 passed` suite state. Files: `.gitignore`, `tests/test_onboarding_scripts.py`, `tests/test_website_assets.py`, `README.md`, `PRD.md`, `PRD_Extended.md`, `website/src/App.tsx`, `CHANGELOG.md`
+
 ## 2026-04-03 23:38:25 IST
 - Strengthened dataset and UI verification by switching the CSV-upload workflow tests to a genuinely different synthetic classification dataset and adding a worker-dashboard failure-path browser test for unsuccessful master registration. Files: `tests/test_dashboard_ui.py`, `tests/test_dfs_lite_workflow.py`, `CHANGELOG.md`
 - Refreshed the website and README verification copy to reflect the expanded `20 passed` suite state. Files: `website/src/App.tsx`, `tests/test_website_assets.py`, `README.md`, `CHANGELOG.md`

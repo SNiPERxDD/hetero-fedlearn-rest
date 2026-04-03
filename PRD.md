@@ -5,7 +5,7 @@
 
 # Project Requirements Document (PRD)
 **Project Title**: Distributed Model Training System via Iterative Federated Learning
-**Target Environment**: Heterogeneous Cluster (1x macOS Master, 2x Windows Workers)
+**Target Environment**: Heterogeneous Cluster (reference layout: 1x macOS Master, 2x Windows Workers; role-swapped operation supported)
 **Date**: March 2026
 
 ## 1. Executive Summary
@@ -15,13 +15,13 @@ This document outlines the architecture, execution phases, and failure mitigatio
 The system employs a decentralized training methodology synchronized by a central aggregator.
 
 ### 2.1 Component Roles
-*   **Master Node (macOS):** 
+*   **Master Node (reference: macOS, role-swappable):** 
     *   Acts as the network coordinator and state manager.
     *   Partitions and distributes the dataset to workers.
     *   Broadcasts global model weights at the start of each communication round.
     *   Aggregates worker updates via Federated Averaging (FedAvg).
     *   Evaluates the global model against a holdout validation set.
-*   **Worker Nodes (Windows, Containerized):**
+*   **Worker Nodes (reference: Windows, Containerized, role-swappable):**
     *   Expose a REST API to receive instructions and model weights.
     *   Maintain a local instance of the model (`SGDClassifier`).
     *   Execute partial training (local epochs) on their isolated data partition.
@@ -124,6 +124,8 @@ project_root/
 ├── CHANGELOG.md              # Concise implementation history with timestamps
 ├── config.json               # Defines total rounds, epochs, and worker endpoints
 ├── start_dashboard.py        # One-command DFS-lite dashboard bootstrap for localhost demos
+├── start_master.py           # Cross-platform DFS-lite master bootstrap
+├── start_worker.py           # Cross-platform DFS-lite worker bootstrap
 ├── website/                  # React website package for the project showcase and quick-start paths
 ├── pyproject.toml            # Pytest configuration for local verification
 ├── scripts/
@@ -150,8 +152,9 @@ project_root/
 *   **Verification Coverage:** `tests/test_federated_workflow.py` exercises worker pre-initialization failure handling and a real two-worker HTTP training session that reaches 0.9737 validation accuracy on the default config.
 *   **Container Packaging:** `worker/Dockerfile` now includes a container health check and has been validated against Python 3.14-slim, Flask 3.1, scikit-learn 1.8, and Waitress 3.0.
 *   **Windows Onboarding:** `scripts/windows/onboard_worker.ps1` automates the inbound firewall rule, optional network profile hardening to `Private`, optional image build/pull, worker container startup, and local `/health` verification.
+*   **Cross-Platform Launchers:** `start_master.py` and `start_worker.py` now provide first-class Python entry points for running the DFS-lite master on Windows or the DFS-lite worker on macOS/Linux without depending on shell-specific onboarding wrappers.
 *   **Standard Documentation:** `README.md` now provides a conventional operator-facing entry point for setup, local simulation, container validation, Windows onboarding, and verification.
-*   **Dashboard Quick Start:** `start_dashboard.py` now bootstraps the local DFS-lite demo end-to-end by building the worker image, starting localhost worker containers from the configured endpoints, health-checking them, and chaining into the master launcher.
+*   **Dashboard Quick Start:** `start_dashboard.py` now bootstraps the local DFS-lite demo end-to-end by building the worker image, starting localhost worker containers from the configured endpoints, health-checking them, and chaining into the Python master launcher.
 *   **Browser Control Plane:** The DFS-lite master and worker dashboards now support browser-driven worker registration, UI-side training configuration, and CSV dataset upload without manual config edits after the services are running.
 *   **Project Website:** `website/` now contains a production-style React site that presents the architecture, DFS-lite telemetry model, quick-start commands, and current validation evidence, but it remains separate from the live Flask control plane. The website serves the project overview, while the actual operator dashboards are still exposed by `master/master_dfs.py` and `worker/worker_dfs.py`.
 *   **Doctrine Preservation:** The baseline v1 runtime remains intact in `master/master.py` and `worker/worker.py`; the DFS-lite v1.1 extension is implemented in copied variant files so the known-good baseline stays unchanged.

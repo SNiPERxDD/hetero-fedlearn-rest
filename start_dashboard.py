@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--allow-unsupported-python",
         action="store_true",
-        help="Forward ALLOW_UNSUPPORTED_PYTHON=1 to start_master.sh for local smoke tests.",
+        help="Forward ALLOW_UNSUPPORTED_PYTHON=1 to start_master.py for local smoke tests.",
     )
     return parser.parse_args()
 
@@ -237,8 +237,8 @@ def main() -> int:
     if args.allow_unsupported_python:
         env["ALLOW_UNSUPPORTED_PYTHON"] = "1"
 
-    master_script = repo_root / "start_master.sh"
-    run_command([str(master_script)], env=env)
+    master_script = repo_root / "start_master.py"
+    run_command([sys.executable, str(master_script)], env=env)
     return 0
 
 

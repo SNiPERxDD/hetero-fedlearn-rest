@@ -18,7 +18,9 @@ Distributed iterative federated learning over HTTP for a heterogeneous cluster w
 - `worker/Dockerfile` packages the baseline worker on `python:3.14-slim` with Flask, Waitress, scikit-learn, and a native Docker health check.
 - `worker/Dockerfile_extended` packages the DFS-lite worker with templates and a persistent datanode storage directory.
 - `scripts/windows/onboard_worker.ps1` automates Windows worker setup for firewall rules, optional network profile hardening, image build or pull, container launch, and health verification.
-- `start_dashboard.py`, `start_master.sh`, and `start_worker.bat` provide the strict bootstrap path required by the extended PRD.
+- `start_master.py` provides the preferred cross-platform DFS-lite master bootstrap.
+- `start_worker.py` provides the preferred cross-platform DFS-lite worker bootstrap in either native Python or Docker mode.
+- `start_dashboard.py`, `start_master.sh`, and `start_worker.bat` remain available as compatibility bootstrap paths for the extended PRD.
 - `website/` contains a clean React website package for the project overview, architecture, validation summary, and quick-start flows.
 
 ## Repository Layout
@@ -31,6 +33,8 @@ Distributed iterative federated learning over HTTP for a heterogeneous cluster w
 ├── PRD_Extended.md
 ├── config.json
 ├── config_extended.json
+├── start_master.py
+├── start_worker.py
 ├── master/
 ├── worker/
 ├── tests/
@@ -40,10 +44,11 @@ Distributed iterative federated learning over HTTP for a heterogeneous cluster w
 ## Requirements
 
 - Python 3.12+ for local development and testing in this repository
-- Python 3.14-compatible runtime for the worker container image and the strict master bootstrap script
+- Python 3.14-compatible runtime for the worker container image and the preferred Python launchers
 - Docker Desktop 24+
-- macOS or Linux for the master path tested here
+- macOS or Linux for the local dashboard bootstrap path tested here
 - Windows with Docker Desktop for physical worker deployment
+- role-swapped operation is supported by the runtime through `start_master.py` and `start_worker.py`
 
 ## Local Development Setup
 
@@ -129,7 +134,7 @@ For the fastest local dashboard demo on macOS or Linux, run:
 python3 start_dashboard.py --allow-unsupported-python
 ```
 
-This launcher builds the DFS-lite worker image, starts one local worker container per localhost endpoint declared in [`config_extended.json`](config_extended.json), waits for each `/health` endpoint, and then chains into [`start_master.sh`](start_master.sh). When the master process exits, the worker containers are removed automatically.
+This launcher builds the DFS-lite worker image, starts one local worker container per localhost endpoint declared in [`config_extended.json`](config_extended.json), waits for each `/health` endpoint, and then chains into [`start_master.py`](start_master.py). When the master process exits, the worker containers are removed automatically.
 
 The default master dashboard port is `18080`, which avoids common local collisions with other tools that often bind `8080`.
 
@@ -140,14 +145,14 @@ python3 start_dashboard.py --allow-unsupported-python --master-port 18080
 Start two DFS-lite workers in separate terminals:
 
 ```bash
-python3 -m worker.worker_dfs --port 5001 --worker-id worker_1 --storage-dir /tmp/hetero-fedlearn-worker-1
-python3 -m worker.worker_dfs --port 5002 --worker-id worker_2 --storage-dir /tmp/hetero-fedlearn-worker-2
+python3 start_worker.py --mode native --allow-unsupported-python --worker-id worker_1 --port 5001 --storage-dir /tmp/hetero-fedlearn-worker-1
+python3 start_worker.py --mode native --allow-unsupported-python --worker-id worker_2 --port 5002 --storage-dir /tmp/hetero-fedlearn-worker-2
 ```
 
 Start the DFS-lite master dashboard with the background training thread enabled:
 
 ```bash
-python3 -m master.master_dfs --config config_extended.json --host 127.0.0.1 --port 18080 --auto-start
+python3 start_master.py --allow-unsupported-python --config config_extended.json --host 127.0.0.1 --port 18080
 ```
 
 Open the dashboards:
@@ -199,9 +204,33 @@ What the PowerShell script does:
 
 After onboarding, update the `workers` section in [`config.json`](config.json) or [`config_extended.json`](config_extended.json) to use the Windows machines' IPv4 addresses.
 
-For the strict extended-PRD bootstrap path, use `start_worker.bat`. It verifies `docker info`, removes the stale container, builds `worker/Dockerfile_extended`, mounts `%cd%\\storage` into `/app/datanode_storage`, and opens the worker dashboard automatically.
+For the preferred cross-platform worker bootstrap path, use `start_worker.py`. Native mode is suitable for a macOS worker or a direct Python worker on any host:
 
-For the master side, use `start_master.sh`. It verifies Python `3.14+` by default, creates an isolated virtual environment, installs `master/requirements_extended.txt`, binds the DFS-lite master dashboard to `0.0.0.0:18080` by default, and opens the browser automatically. `CONFIG_PATH` and `MASTER_PORT` can be overridden when another DFS-lite config or dashboard port is required.
+```bash
+python3 start_worker.py --mode native --allow-unsupported-python --worker-id mac_worker --port 5000 --storage-dir ~/hetero-fedlearn-worker
+```
+
+Docker mode is suitable for Windows or Docker-backed worker hosts:
+
+```bash
+python3 start_worker.py --mode docker --worker-id worker_1 --port 5000
+```
+
+For the strict extended-PRD compatibility path, `start_worker.bat` still verifies `docker info`, removes the stale container, builds `worker/Dockerfile_extended`, mounts `%cd%\\storage` into `/app/datanode_storage`, and opens the worker dashboard automatically.
+
+For the preferred cross-platform master bootstrap path, use `start_master.py`. It verifies Python `3.14+` by default, creates an isolated virtual environment, installs `master/requirements_extended.txt`, binds the DFS-lite master dashboard to `0.0.0.0:18080` by default, and opens the browser automatically. `CONFIG_PATH` and `MASTER_PORT` can be overridden when another DFS-lite config or dashboard port is required.
+
+`start_master.sh` remains as a compatibility wrapper that delegates to `start_master.py`.
+
+## Role-Swapped Topologies
+
+The runtime is no longer tied to "mac master, Windows workers" at the launcher level. The preferred Python entry points support role-swapped layouts directly:
+
+- Windows master: run `py start_master.py --config config_extended.json --host 0.0.0.0 --port 18080`
+- macOS worker: run `python3 start_worker.py --mode native --allow-unsupported-python --worker-id mac_worker --port 5000 --storage-dir ~/hetero-fedlearn-worker`
+- Windows worker in Docker mode: run `py start_worker.py --mode docker --worker-id worker_1 --port 5000`
+
+`start_dashboard.py` remains a localhost demo path for macOS/Linux because it builds and orchestrates local worker containers on the same machine.
 
 After the services are up:
 
@@ -255,8 +284,8 @@ npm run build
 Notes:
 
 - the generated AI Studio browser mock was preserved separately during integration, but the committed deliverable is the cleaned `website/` package
-- the website copy reflects the real project entry points such as `start_dashboard.py`, `start_master.sh`, `start_worker.bat`, and `scripts/windows/onboard_worker.ps1`
-- the current site content includes the verified `20 passed` suite state and the `0.9737` DFS-lite validation result
+- the website copy reflects the real project entry points such as `start_dashboard.py`, `start_master.py`, `start_worker.py`, `start_worker.bat`, and `scripts/windows/onboard_worker.ps1`
+- the current site content includes the verified `22 passed` suite state and the `0.9737` DFS-lite validation result
 
 ## Worker API
 

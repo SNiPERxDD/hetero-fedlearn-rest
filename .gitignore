@@ -2,6 +2,10 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 *.pyc
+.venv_master_dfs/
+.venv_worker_dfs/
+.dashboard_storage/
+storage/
 website/node_modules/
 website/dist/
 website/tsconfig.tsbuildinfo
