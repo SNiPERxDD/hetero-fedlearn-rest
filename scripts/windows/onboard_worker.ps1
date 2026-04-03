@@ -235,4 +235,3 @@ if (-not $SkipDockerRun) {
     Write-Host "Worker ID: $WorkerId"
     Write-Host "Firewall Rule: $RuleName"
 }
-[comment-based help intentionally omitted?]

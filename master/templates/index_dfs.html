@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DFS-Lite Master Dashboard</title>
+  <style>
+    :root {
+      --bg: #f4efe7;
+      --panel: rgba(255, 255, 255, 0.88);
+      --panel-strong: #ffffff;
+      --text: #14222b;
+      --muted: #5b6b73;
+      --accent: #0c7c7b;
+      --accent-soft: rgba(12, 124, 123, 0.14);
+      --warning: #c26a14;
+      --danger: #b42318;
+      --border: rgba(20, 34, 43, 0.09);
+      --shadow: 0 22px 60px rgba(20, 34, 43, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(12, 124, 123, 0.12), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(194, 106, 20, 0.12), transparent 28%),
+        linear-gradient(160deg, #f8f4ed 0%, #f2ede3 46%, #efe7db 100%);
+    }
+
+    .shell {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 28px 22px 40px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.3fr 0.9fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .hero-panel,
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .hero-panel {
+      padding: 26px;
+    }
+
+    .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      font-size: 0.72rem;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(2rem, 3.1vw, 3.4rem);
+      line-height: 0.96;
+    }
+
+    .subcopy {
+      margin: 0;
+      max-width: 56ch;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 12px 28px rgba(12, 124, 123, 0.24);
+    }
+
+    button[disabled] {
+      cursor: wait;
+      opacity: 0.7;
+    }
+
+    .button-secondary {
+      background: var(--panel-strong);
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: none;
+    }
+
+    .hero-stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .stat-card {
+      border-radius: 18px;
+      padding: 16px;
+      background: var(--panel-strong);
+      border: 1px solid var(--border);
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .stat-value {
+      margin-top: 8px;
+      font-size: 1.8rem;
+      font-weight: 700;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 18px;
+    }
+
+    .panel {
+      padding: 22px;
+    }
+
+    .panel h2 {
+      margin: 0 0 14px;
+      font-size: 1.15rem;
+    }
+
+    .chart-frame {
+      width: 100%;
+      min-height: 280px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(12, 124, 123, 0.06), rgba(255, 255, 255, 0.72));
+      border: 1px solid var(--border);
+      padding: 14px;
+    }
+
+    svg {
+      width: 100%;
+      height: 250px;
+      overflow: visible;
+    }
+
+    .axis {
+      stroke: rgba(20, 34, 43, 0.16);
+      stroke-width: 1;
+    }
+
+    .line {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .dot {
+      fill: #fff;
+      stroke: var(--accent);
+      stroke-width: 3;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .mono {
+      font-family: "SFMono-Regular", "Menlo", monospace;
+      font-size: 0.85rem;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .status-pill.offline {
+      background: rgba(180, 35, 24, 0.12);
+      color: var(--danger);
+    }
+
+    .status-note {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .error-banner {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(180, 35, 24, 0.1);
+      color: var(--danger);
+      display: none;
+    }
+
+    @media (max-width: 980px) {
+      .hero,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div class="hero-panel">
+        <div class="eyebrow">DFS-Lite NameNode</div>
+        <h1>Move Training To The Blocks, Not The Blocks To Training.</h1>
+        <p class="subcopy">
+          This dashboard visualizes the asynchronous master loop, the DFS-style block map, and the
+          live health of the worker cluster while federated rounds execute in the background.
+        </p>
+        <div class="hero-actions">
+          <button id="start-training">Start Background Training</button>
+          <button class="button-secondary" id="refresh-now">Refresh Status</button>
+        </div>
+        <div class="error-banner" id="error-banner"></div>
+      </div>
+      <div class="hero-panel">
+        <div class="hero-stats">
+          <div class="stat-card">
+            <div class="stat-label">Cluster State</div>
+            <div class="stat-value" id="cluster-state">Idle</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Current Round</div>
+            <div class="stat-value" id="current-round">0 / {{ total_rounds }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Validation Accuracy</div>
+            <div class="stat-value" id="validation-accuracy">0.0000</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Validation Loss</div>
+            <div class="stat-value" id="validation-loss">0.0000</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2>Global Epoch Chart</h2>
+        <div class="chart-frame">
+          <svg viewBox="0 0 760 250" role="img" aria-label="Validation accuracy over communication rounds">
+            <line class="axis" x1="30" y1="15" x2="30" y2="220"></line>
+            <line class="axis" x1="30" y1="220" x2="730" y2="220"></line>
+            <polyline class="line" id="accuracy-line" points=""></polyline>
+            <g id="accuracy-dots"></g>
+          </svg>
+        </div>
+        <p class="status-note">The chart includes round 0 as the pre-training baseline and updates every poll cycle.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Cluster Health</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Worker</th>
+              <th>Status</th>
+              <th>Blocks</th>
+              <th>Storage</th>
+            </tr>
+          </thead>
+          <tbody id="worker-health-body"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>DFS Block Map</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Block</th>
+              <th>Samples</th>
+              <th>Replicas</th>
+              <th>Bytes</th>
+              <th>Last Worker</th>
+            </tr>
+          </thead>
+          <tbody id="block-map-body"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Round Summary</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Round</th>
+              <th>Accuracy</th>
+              <th>Loss</th>
+              <th>Mean Local Loss</th>
+            </tr>
+          </thead>
+          <tbody id="round-summary-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const pollIntervalMs = {{ poll_interval_ms | tojson }};
+    const totalRounds = {{ total_rounds | tojson }};
+
+    function formatNumber(value, digits = 4) {
+      if (value === null || value === undefined) {
+        return "n/a";
+      }
+      return Number(value).toFixed(digits);
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes) {
+        return "0 B";
+      }
+      const units = ["B", "KB", "MB", "GB"];
+      let value = Number(bytes);
+      let unitIndex = 0;
+      while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex += 1;
+      }
+      return `${value.toFixed(unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`;
+    }
+
+    function renderChart(history) {
+      const line = document.getElementById("accuracy-line");
+      const dots = document.getElementById("accuracy-dots");
+      dots.innerHTML = "";
+      if (!history.length) {
+        line.setAttribute("points", "");
+        return;
+      }
+
+      const maxRound = Math.max(...history.map((point) => point.round_number), totalRounds, 1);
+      const minAccuracy = Math.min(...history.map((point) => point.validation_accuracy));
+      const maxAccuracy = Math.max(...history.map((point) => point.validation_accuracy));
+      const floor = Math.max(0, minAccuracy - 0.05);
+      const ceiling = Math.min(1, maxAccuracy + 0.02);
+
+      const points = history.map((point) => {
+        const x = 30 + (700 * point.round_number) / maxRound;
+        const y = 220 - ((point.validation_accuracy - floor) / Math.max(ceiling - floor, 0.001)) * 190;
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("class", "dot");
+        circle.setAttribute("cx", x);
+        circle.setAttribute("cy", y);
+        circle.setAttribute("r", 5);
+        dots.appendChild(circle);
+        return `${x},${y}`;
+      });
+
+      line.setAttribute("points", points.join(" "));
+    }
+
+    function renderWorkerHealth(workers) {
+      const body = document.getElementById("worker-health-body");
+      body.innerHTML = workers.map((worker) => `
+        <tr>
+          <td class="mono">${worker.worker_id}</td>
+          <td>
+            <span class="status-pill ${worker.healthy ? "" : "offline"}">
+              ${worker.healthy ? (worker.ready ? "Ready" : "Online") : "Offline"}
+            </span>
+          </td>
+          <td>${worker.block_count}</td>
+          <td>${formatBytes(worker.storage_bytes)}</td>
+        </tr>
+      `).join("");
+    }
+
+    function renderBlockMap(blocks) {
+      const body = document.getElementById("block-map-body");
+      body.innerHTML = blocks.map((block) => `
+        <tr>
+          <td class="mono">${block.block_id}</td>
+          <td>${block.sample_count}</td>
+          <td>${(block.replicas || []).join(", ")}</td>
+          <td>${formatBytes(block.bytes_written)}</td>
+          <td class="mono">${block.last_worker || "pending"}</td>
+        </tr>
+      `).join("");
+    }
+
+    function renderRoundSummary(rounds) {
+      const body = document.getElementById("round-summary-body");
+      body.innerHTML = rounds.map((round) => `
+        <tr>
+          <td>${round.round_number}</td>
+          <td>${formatNumber(round.validation_accuracy)}</td>
+          <td>${formatNumber(round.validation_loss)}</td>
+          <td>${formatNumber(round.mean_local_loss)}</td>
+        </tr>
+      `).join("");
+    }
+
+    function renderState(state) {
+      const clusterState = document.getElementById("cluster-state");
+      const currentRound = document.getElementById("current-round");
+      const validationAccuracy = document.getElementById("validation-accuracy");
+      const validationLoss = document.getElementById("validation-loss");
+      const errorBanner = document.getElementById("error-banner");
+      const startButton = document.getElementById("start-training");
+
+      if (state.training_error) {
+        errorBanner.style.display = "block";
+        errorBanner.textContent = state.training_error;
+      } else {
+        errorBanner.style.display = "none";
+        errorBanner.textContent = "";
+      }
+
+      if (state.training_active) {
+        clusterState.textContent = "Running";
+        startButton.disabled = true;
+      } else if (state.training_completed) {
+        clusterState.textContent = "Completed";
+        startButton.disabled = false;
+      } else {
+        clusterState.textContent = "Idle";
+        startButton.disabled = false;
+      }
+
+      currentRound.textContent = `${state.current_round} / ${state.total_rounds || totalRounds}`;
+      validationAccuracy.textContent = formatNumber(state.latest_validation_accuracy);
+      validationLoss.textContent = formatNumber(state.latest_validation_loss);
+
+      renderChart(state.validation_history || []);
+      renderWorkerHealth(state.worker_health || []);
+      renderBlockMap(state.block_map || []);
+      renderRoundSummary(state.round_summaries || []);
+    }
+
+    async function fetchStatus() {
+      const response = await fetch("/api/status");
+      const state = await response.json();
+      renderState(state);
+    }
+
+    async function startTraining() {
+      const response = await fetch("/api/start_training", { method: "POST" });
+      const payload = await response.json();
+      renderState(payload.state);
+    }
+
+    document.getElementById("refresh-now").addEventListener("click", fetchStatus);
+    document.getElementById("start-training").addEventListener("click", startTraining);
+
+    fetchStatus();
+    window.setInterval(fetchStatus, pollIntervalMs);
+  </script>
+</body>
+</html>

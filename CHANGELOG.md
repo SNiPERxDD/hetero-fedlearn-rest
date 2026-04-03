@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-04-03 12:55:22 IST
+- Added the DFS-lite extension as preserved-copy variants with a NameNode-style master service, a DataNode-style worker service, block metadata tracking, disk-backed block commits, and background-thread orchestration for dashboards. Files: `config_extended.json`, `master/master_dfs.py`, `master/requirements_extended.txt`, `worker/worker_dfs.py`
+- Added telemetry dashboards, bootstrap scripts, and DFS-lite packaging assets for live demos and OS onboarding. Files: `master/templates/index_dfs.html`, `worker/templates/index_dfs.html`, `worker/Dockerfile_extended`, `worker/datanode_storage/.gitkeep`, `start_master.sh`, `start_worker.bat`, `scripts/windows/onboard_worker.ps1`
+- Added DFS-lite verification coverage and updated project documentation to distinguish the preserved v1 baseline from the v1.1 extension. Files: `tests/test_dfs_lite_workflow.py`, `README.md`, `PRD.md`, `PRD_Extended.md`, `CHANGELOG.md`
+
 ## 2026-03-27 19:06:11 IST
 - Added a standard repository `README.md` covering architecture, setup, local simulation, container execution, Windows worker onboarding, configuration, API usage, and verification flow. Files: `README.md`
 - Updated the PRD directory tree and implementation snapshot to include the standard project README. Files: `PRD.md`, `CHANGELOG.md`

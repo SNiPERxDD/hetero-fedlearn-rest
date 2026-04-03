@@ -149,3 +149,4 @@ project_root/
 *   **Container Packaging:** `worker/Dockerfile` now includes a container health check and has been validated against Python 3.14-slim, Flask 3.1, scikit-learn 1.8, and Waitress 3.0.
 *   **Windows Onboarding:** `scripts/windows/onboard_worker.ps1` automates the inbound firewall rule, optional network profile hardening to `Private`, optional image build/pull, worker container startup, and local `/health` verification.
 *   **Standard Documentation:** `README.md` now provides a conventional operator-facing entry point for setup, local simulation, container validation, Windows onboarding, and verification.
+*   **Doctrine Preservation:** The baseline v1 runtime remains intact in `master/master.py` and `worker/worker.py`; the DFS-lite v1.1 extension is implemented in copied variant files so the known-good baseline stays unchanged.

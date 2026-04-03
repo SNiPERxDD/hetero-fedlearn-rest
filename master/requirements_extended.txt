@@ -1,0 +1,5 @@
+Flask>=3.0
+numpy>=1.26
+requests>=2.32
+scikit-learn>=1.7
+waitress>=3.0

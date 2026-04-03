@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DFS-Lite Worker Dashboard</title>
+  <style>
+    :root {
+      --bg: #121c21;
+      --panel: rgba(19, 36, 43, 0.88);
+      --panel-strong: #182b33;
+      --text: #f5f7f8;
+      --muted: #9fb0b7;
+      --accent: #62d0b6;
+      --accent-soft: rgba(98, 208, 182, 0.12);
+      --border: rgba(255, 255, 255, 0.08);
+      --shadow: 0 22px 60px rgba(0, 0, 0, 0.28);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(98, 208, 182, 0.12), transparent 28%),
+        radial-gradient(circle at bottom left, rgba(255, 180, 92, 0.08), transparent 24%),
+        linear-gradient(180deg, #0f181d 0%, #16252d 100%);
+    }
+
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 26px 20px 40px;
+    }
+
+    .hero,
+    .grid {
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero {
+      grid-template-columns: 1.2fr 1fr;
+      margin-bottom: 18px;
+    }
+
+    .grid {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 22px;
+      backdrop-filter: blur(10px);
+    }
+
+    .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      font-size: 0.72rem;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(2rem, 3vw, 3rem);
+      line-height: 1;
+    }
+
+    .subcopy {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .stat-card {
+      background: var(--panel-strong);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 16px;
+    }
+
+    .stat-label {
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.76rem;
+    }
+
+    .stat-value {
+      margin-top: 8px;
+      font-size: 1.75rem;
+      font-weight: 700;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.78rem;
+    }
+
+    .mono {
+      font-family: "SFMono-Regular", "Menlo", monospace;
+      font-size: 0.84rem;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .status.idle {
+      background: rgba(255, 180, 92, 0.14);
+      color: #ffcc84;
+    }
+
+    .storage-note {
+      color: var(--muted);
+      line-height: 1.5;
+      margin-top: 12px;
+    }
+
+    @media (max-width: 960px) {
+      .hero,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div class="panel">
+        <div class="eyebrow">DFS-Lite DataNode</div>
+        <h1 id="worker-title">{{ worker_id }}</h1>
+        <p class="subcopy">
+          This worker stores federated training blocks on local disk and reloads them for each local epoch round.
+          The panel below exposes both storage persistence and the latest compute telemetry.
+        </p>
+      </div>
+
+      <div class="panel">
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-label">Worker State</div>
+            <div class="stat-value" id="worker-state">Idle</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Storage Usage</div>
+            <div class="stat-value" id="storage-usage">0 B</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Last Local Loss</div>
+            <div class="stat-value" id="local-loss">n/a</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Samples Processed</div>
+            <div class="stat-value" id="samples-processed">0</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2>Block Inventory</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Block</th>
+              <th>Bytes</th>
+              <th>Samples</th>
+              <th>Path</th>
+            </tr>
+          </thead>
+          <tbody id="block-body"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Runtime Telemetry</h2>
+        <p><span class="status idle" id="ready-pill">Idle</span></p>
+        <table>
+          <tbody>
+            <tr>
+              <th>Worker ID</th>
+              <td class="mono" id="worker-id">{{ worker_id }}</td>
+            </tr>
+            <tr>
+              <th>Storage Directory</th>
+              <td class="mono" id="storage-dir">pending</td>
+            </tr>
+            <tr>
+              <th>Last Round</th>
+              <td id="last-round">n/a</td>
+            </tr>
+            <tr>
+              <th>Block Count</th>
+              <td id="block-count">0</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="storage-note">
+          Data locality is proven when block files persist on disk here and the master sends only model parameters during training rounds.
+        </p>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    function formatNumber(value, digits = 4) {
+      if (value === null || value === undefined) {
+        return "n/a";
+      }
+      return Number(value).toFixed(digits);
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes) {
+        return "0 B";
+      }
+      const units = ["B", "KB", "MB", "GB"];
+      let value = Number(bytes);
+      let unitIndex = 0;
+      while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex += 1;
+      }
+      return `${value.toFixed(unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`;
+    }
+
+    function renderState(state) {
+      document.getElementById("worker-title").textContent = state.worker_id;
+      document.getElementById("worker-id").textContent = state.worker_id;
+      document.getElementById("worker-state").textContent = state.ready ? "Ready" : "Idle";
+      document.getElementById("storage-usage").textContent = formatBytes(state.storage_bytes);
+      document.getElementById("local-loss").textContent = formatNumber(state.last_local_loss);
+      document.getElementById("samples-processed").textContent = state.last_samples_processed || 0;
+      document.getElementById("storage-dir").textContent = state.storage_dir;
+      document.getElementById("last-round").textContent = state.last_round_number ?? "n/a";
+      document.getElementById("block-count").textContent = state.block_count;
+
+      const readyPill = document.getElementById("ready-pill");
+      readyPill.textContent = state.ready ? "Ready" : "Idle";
+      readyPill.className = `status ${state.ready ? "" : "idle"}`;
+
+      const blockBody = document.getElementById("block-body");
+      blockBody.innerHTML = (state.blocks || []).map((block) => `
+        <tr>
+          <td class="mono">${block.block_id}</td>
+          <td>${formatBytes(block.bytes_written)}</td>
+          <td>${block.sample_count ?? "n/a"}</td>
+          <td class="mono">${block.path}</td>
+        </tr>
+      `).join("");
+    }
+
+    async function fetchStatus() {
+      const response = await fetch("/api/status");
+      const state = await response.json();
+      renderState(state);
+    }
+
+    fetchStatus();
+    window.setInterval(fetchStatus, 1500);
+  </script>
+</body>
+</html>
