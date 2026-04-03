@@ -131,6 +131,8 @@ def test_dashboard_ui_flow(page: Page, dfs_ui_stack: tuple[str, list[str], list[
     page.goto(master_url, wait_until="domcontentloaded")
     expect(page.get_by_role("heading", name="Move Training To The Blocks, Not The Blocks To Training.")).to_be_visible()
     expect(page.locator("#cluster-state")).to_have_text("Idle")
+    expect(page.locator("#config-rounds")).to_have_value("6")
+    expect(page.locator("#worker-form")).to_be_visible()
     page.get_by_role("button", name="Start Background Training").click()
     expect(page.locator("#cluster-state")).to_have_text("Completed", timeout=30000)
     expect(page.locator("#current-round")).to_have_text("6 / 6", timeout=30000)
@@ -145,6 +147,7 @@ def test_dashboard_ui_flow(page: Page, dfs_ui_stack: tuple[str, list[str], list[
     for index, worker_url in enumerate(worker_urls):
         page.goto(worker_url, wait_until="domcontentloaded")
         expect(page.locator("#worker-title")).to_have_text(f"worker_{index + 1}")
+        expect(page.locator("#connect-form")).to_be_visible()
         expect(page.locator("#ready-pill")).to_have_text("Ready", timeout=30000)
         expect(page.locator("#block-count")).to_have_text("1", timeout=30000)
         expect(page.locator("#storage-dir")).to_contain_text(str(worker_storage_dirs[index]))

@@ -152,5 +152,6 @@ project_root/
 *   **Windows Onboarding:** `scripts/windows/onboard_worker.ps1` automates the inbound firewall rule, optional network profile hardening to `Private`, optional image build/pull, worker container startup, and local `/health` verification.
 *   **Standard Documentation:** `README.md` now provides a conventional operator-facing entry point for setup, local simulation, container validation, Windows onboarding, and verification.
 *   **Dashboard Quick Start:** `start_dashboard.py` now bootstraps the local DFS-lite demo end-to-end by building the worker image, starting localhost worker containers from the configured endpoints, health-checking them, and chaining into the master launcher.
+*   **Browser Control Plane:** The DFS-lite master and worker dashboards now support browser-driven worker registration, UI-side training configuration, and CSV dataset upload without manual config edits after the services are running.
 *   **Project Website:** `website/` now contains a production-style React site that presents the architecture, DFS-lite telemetry model, quick-start commands, and current validation evidence.
 *   **Doctrine Preservation:** The baseline v1 runtime remains intact in `master/master.py` and `worker/worker.py`; the DFS-lite v1.1 extension is implemented in copied variant files so the known-good baseline stays unchanged.

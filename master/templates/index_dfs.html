@@ -35,16 +35,29 @@
     }
 
     .shell {
-      max-width: 1320px;
+      max-width: 1400px;
       margin: 0 auto;
       padding: 28px 22px 40px;
     }
 
-    .hero {
+    .hero,
+    .control-grid,
+    .grid {
       display: grid;
-      grid-template-columns: 1.3fr 0.9fr;
       gap: 18px;
       margin-bottom: 18px;
+    }
+
+    .hero {
+      grid-template-columns: 1.2fr 0.8fr;
+    }
+
+    .control-grid {
+      grid-template-columns: 1fr 1fr 1.15fr;
+    }
+
+    .grid {
+      grid-template-columns: 1.25fr 1fr;
     }
 
     .hero-panel,
@@ -56,8 +69,9 @@
       backdrop-filter: blur(8px);
     }
 
-    .hero-panel {
-      padding: 26px;
+    .hero-panel,
+    .panel {
+      padding: 24px;
     }
 
     .eyebrow {
@@ -70,29 +84,41 @@
 
     h1 {
       margin: 0 0 10px;
-      font-size: clamp(2rem, 3.1vw, 3.4rem);
+      font-size: clamp(2rem, 3vw, 3.4rem);
       line-height: 0.96;
     }
 
-    .subcopy {
+    h2,
+    h3 {
+      margin: 0 0 14px;
+    }
+
+    .subcopy,
+    .panel-copy,
+    .status-note {
       margin: 0;
-      max-width: 56ch;
       color: var(--muted);
       line-height: 1.6;
     }
 
-    .hero-actions {
+    .hero-actions,
+    .inline-actions {
       display: flex;
       flex-wrap: wrap;
       gap: 12px;
-      margin-top: 20px;
+      margin-top: 18px;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
     }
 
     button {
       border: 0;
       border-radius: 999px;
       padding: 12px 18px;
-      font: inherit;
       font-weight: 700;
       cursor: pointer;
       background: var(--accent);
@@ -105,10 +131,18 @@
       opacity: 0.7;
     }
 
-    .button-secondary {
+    .button-secondary,
+    .button-ghost {
       background: var(--panel-strong);
       color: var(--text);
       border: 1px solid var(--border);
+      box-shadow: none;
+    }
+
+    .button-danger {
+      background: rgba(180, 35, 24, 0.12);
+      color: var(--danger);
+      border: 1px solid rgba(180, 35, 24, 0.14);
       box-shadow: none;
     }
 
@@ -137,21 +171,6 @@
       margin-top: 8px;
       font-size: 1.8rem;
       font-weight: 700;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: 1.3fr 1fr;
-      gap: 18px;
-    }
-
-    .panel {
-      padding: 22px;
-    }
-
-    .panel h2 {
-      margin: 0 0 14px;
-      font-size: 1.15rem;
     }
 
     .chart-frame {
@@ -188,6 +207,64 @@
       stroke-width: 3;
     }
 
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--panel-strong);
+      color: var(--text);
+    }
+
+    .field input[type="file"] {
+      padding: 10px 12px;
+    }
+
+    .field.span-2 {
+      grid-column: span 2;
+    }
+
+    .config-note,
+    .status-banner {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(12, 124, 123, 0.09);
+      color: var(--text);
+    }
+
+    .status-banner.error {
+      background: rgba(180, 35, 24, 0.1);
+      color: var(--danger);
+    }
+
+    .mono {
+      font-family: "SFMono-Regular", "Menlo", monospace;
+      font-size: 0.85rem;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -208,11 +285,6 @@
       letter-spacing: 0.08em;
     }
 
-    .mono {
-      font-family: "SFMono-Regular", "Menlo", monospace;
-      font-size: 0.85rem;
-    }
-
     .status-pill {
       display: inline-flex;
       align-items: center;
@@ -229,24 +301,27 @@
       color: var(--danger);
     }
 
-    .status-note {
-      color: var(--muted);
-      line-height: 1.5;
+    .table-actions {
+      display: flex;
+      justify-content: flex-end;
     }
 
-    .error-banner {
-      margin-top: 14px;
-      padding: 14px 16px;
-      border-radius: 16px;
-      background: rgba(180, 35, 24, 0.1);
-      color: var(--danger);
-      display: none;
-    }
-
-    @media (max-width: 980px) {
+    @media (max-width: 1140px) {
       .hero,
+      .control-grid,
       .grid {
         grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .form-grid,
+      .hero-stats {
+        grid-template-columns: 1fr;
+      }
+
+      .field.span-2 {
+        grid-column: auto;
       }
     }
   </style>
@@ -258,15 +333,17 @@
         <div class="eyebrow">DFS-Lite NameNode</div>
         <h1>Move Training To The Blocks, Not The Blocks To Training.</h1>
         <p class="subcopy">
-          This dashboard visualizes the asynchronous master loop, the DFS-style block map, and the
-          live health of the worker cluster while federated rounds execute in the background.
+          This master now acts as a real control plane: connect workers, switch datasets, tune training settings,
+          and start the federated loop directly from the browser.
         </p>
         <div class="hero-actions">
           <button id="start-training">Start Background Training</button>
           <button class="button-secondary" id="refresh-now">Refresh Status</button>
         </div>
-        <div class="error-banner" id="error-banner"></div>
+        <div class="status-banner" id="action-banner">Control plane ready.</div>
+        <div class="status-banner error" id="error-banner" hidden></div>
       </div>
+
       <div class="hero-panel">
         <div class="hero-stats">
           <div class="stat-card">
@@ -289,6 +366,97 @@
       </div>
     </section>
 
+    <section class="control-grid">
+      <div class="panel">
+        <h2>Training Settings</h2>
+        <p class="panel-copy">Update the core DFS-lite loop without editing `config_extended.json` by hand.</p>
+        <form id="training-form" class="form-grid">
+          <div class="field">
+            <label for="config-rounds">Rounds</label>
+            <input id="config-rounds" name="rounds" type="number" min="1" value="{{ total_rounds }}">
+          </div>
+          <div class="field">
+            <label for="config-local-epochs">Local Epochs</label>
+            <input id="config-local-epochs" name="local_epochs" type="number" min="1" value="5">
+          </div>
+          <div class="field">
+            <label for="config-replication-factor">Replication Factor</label>
+            <input id="config-replication-factor" name="replication_factor" type="number" min="1" value="1">
+          </div>
+          <div class="field">
+            <label for="config-validation-fraction">Validation Fraction</label>
+            <input id="config-validation-fraction" name="validation_fraction" type="number" min="0.05" max="0.49" step="0.01" value="0.2">
+          </div>
+          <div class="field span-2">
+            <label for="config-timeout-seconds">Worker Timeout (seconds)</label>
+            <input id="config-timeout-seconds" name="timeout_seconds" type="number" min="1" step="1" value="120">
+          </div>
+          <div class="field span-2">
+            <button type="submit">Save Settings</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h2>Dataset Control</h2>
+        <p class="panel-copy">Switch between the builtin breast cancer dataset and a user-supplied CSV dataset.</p>
+        <div class="form-grid">
+          <div class="field">
+            <label for="dataset-source">Dataset Source</label>
+            <select id="dataset-source">
+              <option value="builtin">Builtin</option>
+              <option value="csv">CSV Upload</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="dataset-name">Dataset Name</label>
+            <input id="dataset-name" type="text" value="breast_cancer">
+          </div>
+          <div class="field">
+            <label for="dataset-label-column">Label Column</label>
+            <input id="dataset-label-column" type="number" value="-1">
+          </div>
+          <div class="field">
+            <label for="dataset-file">CSV Dataset</label>
+            <input id="dataset-file" type="file" accept=".csv,text/csv">
+          </div>
+        </div>
+        <div class="inline-actions">
+          <button class="button-secondary" id="use-builtin-dataset" type="button">Use Builtin Dataset</button>
+          <button id="upload-dataset" type="button">Upload CSV Dataset</button>
+        </div>
+        <div class="config-note mono" id="dataset-summary">Dataset source: builtin</div>
+      </div>
+
+      <div class="panel">
+        <h2>Worker Registry</h2>
+        <p class="panel-copy">Workers can self-register from their own page, or the master can add them directly here.</p>
+        <form id="worker-form" class="form-grid">
+          <div class="field">
+            <label for="worker-id-input">Worker ID</label>
+            <input id="worker-id-input" type="text" placeholder="worker_3">
+          </div>
+          <div class="field">
+            <label for="worker-endpoint-input">Endpoint</label>
+            <input id="worker-endpoint-input" type="url" placeholder="http://192.168.1.40:5000">
+          </div>
+          <div class="field span-2">
+            <button type="submit">Add Or Update Worker</button>
+          </div>
+        </form>
+        <table>
+          <thead>
+            <tr>
+              <th>Worker</th>
+              <th>Endpoint</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="worker-config-body"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="grid">
       <div class="panel">
         <h2>Global Epoch Chart</h2>
@@ -300,7 +468,7 @@
             <g id="accuracy-dots"></g>
           </svg>
         </div>
-        <p class="status-note">The chart includes round 0 as the pre-training baseline and updates every poll cycle.</p>
+        <p class="status-note">Round 0 is the pre-training baseline. The chart updates on every poll cycle.</p>
       </div>
 
       <div class="panel">
@@ -354,6 +522,7 @@
   <script>
     const pollIntervalMs = {{ poll_interval_ms | tojson }};
     const totalRounds = {{ total_rounds | tojson }};
+    let cachedConfig = null;
 
     function formatNumber(value, digits = 4) {
       if (value === null || value === undefined) {
@@ -374,6 +543,19 @@
         unitIndex += 1;
       }
       return `${value.toFixed(unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`;
+    }
+
+    function setBanner(message, isError = false) {
+      const actionBanner = document.getElementById("action-banner");
+      const errorBanner = document.getElementById("error-banner");
+      if (isError) {
+        errorBanner.hidden = false;
+        errorBanner.textContent = message;
+      } else {
+        actionBanner.textContent = message;
+        errorBanner.hidden = true;
+        errorBanner.textContent = "";
+      }
     }
 
     function renderChart(history) {
@@ -422,6 +604,29 @@
       `).join("");
     }
 
+    function renderWorkerRegistry(workers) {
+      const body = document.getElementById("worker-config-body");
+      body.innerHTML = workers.map((worker) => `
+        <tr>
+          <td class="mono">${worker.worker_id}</td>
+          <td class="mono">${worker.endpoint}</td>
+          <td class="table-actions">
+            <button class="button-danger" type="button" data-remove-worker="${worker.worker_id}">Remove</button>
+          </td>
+        </tr>
+      `).join("");
+
+      body.querySelectorAll("[data-remove-worker]").forEach((button) => {
+        button.addEventListener("click", async (event) => {
+          const workerId = event.currentTarget.dataset.removeWorker;
+          if (!workerId) {
+            return;
+          }
+          await removeWorker(workerId);
+        });
+      });
+    }
+
     function renderBlockMap(blocks) {
       const body = document.getElementById("block-map-body");
       body.innerHTML = blocks.map((block) => `
@@ -452,15 +657,10 @@
       const currentRound = document.getElementById("current-round");
       const validationAccuracy = document.getElementById("validation-accuracy");
       const validationLoss = document.getElementById("validation-loss");
-      const errorBanner = document.getElementById("error-banner");
       const startButton = document.getElementById("start-training");
 
       if (state.training_error) {
-        errorBanner.style.display = "block";
-        errorBanner.textContent = state.training_error;
-      } else {
-        errorBanner.style.display = "none";
-        errorBanner.textContent = "";
+        setBanner(state.training_error, true);
       }
 
       if (state.training_active) {
@@ -484,22 +684,177 @@
       renderRoundSummary(state.round_summaries || []);
     }
 
+    function renderConfig(config) {
+      cachedConfig = config;
+      document.getElementById("config-rounds").value = config.training.rounds;
+      document.getElementById("config-local-epochs").value = config.training.local_epochs;
+      document.getElementById("config-replication-factor").value = config.training.replication_factor || 1;
+      document.getElementById("config-validation-fraction").value = config.dataset.validation_fraction ?? 0.2;
+      document.getElementById("config-timeout-seconds").value = config.network.timeout_seconds;
+      document.getElementById("dataset-source").value = config.dataset.source || "builtin";
+      document.getElementById("dataset-name").value = config.dataset.name || "breast_cancer";
+      document.getElementById("dataset-label-column").value = config.dataset.label_column ?? -1;
+      document.getElementById("dataset-summary").textContent = config.dataset.source === "csv"
+        ? `Dataset source: csv · ${config.dataset.csv_path || config.dataset.name || "uploaded dataset"}`
+        : `Dataset source: builtin · ${config.dataset.name || "breast_cancer"}`;
+      renderWorkerRegistry(config.workers || []);
+    }
+
+    async function fetchJson(url, options = {}) {
+      const response = await fetch(url, options);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || `Request failed for ${url}`);
+      }
+      return payload;
+    }
+
     async function fetchStatus() {
-      const response = await fetch("/api/status");
-      const state = await response.json();
+      const state = await fetchJson("/api/status");
       renderState(state);
     }
 
-    async function startTraining() {
-      const response = await fetch("/api/start_training", { method: "POST" });
-      const payload = await response.json();
-      renderState(payload.state);
+    async function fetchConfig() {
+      const config = await fetchJson("/api/config");
+      renderConfig(config);
     }
 
-    document.getElementById("refresh-now").addEventListener("click", fetchStatus);
-    document.getElementById("start-training").addEventListener("click", startTraining);
+    async function startTraining() {
+      try {
+        const payload = await fetchJson("/api/start_training", { method: "POST" });
+        renderState(payload.state);
+        setBanner(payload.started ? "Training started." : "Training was already running.");
+      } catch (error) {
+        setBanner(error.message, true);
+      }
+    }
 
-    fetchStatus();
+    async function saveSettings(event) {
+      event.preventDefault();
+      try {
+        const payload = await fetchJson("/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            dataset: {
+              validation_fraction: Number(document.getElementById("config-validation-fraction").value),
+            },
+            training: {
+              rounds: Number(document.getElementById("config-rounds").value),
+              local_epochs: Number(document.getElementById("config-local-epochs").value),
+              replication_factor: Number(document.getElementById("config-replication-factor").value),
+            },
+            network: {
+              timeout_seconds: Number(document.getElementById("config-timeout-seconds").value),
+            },
+          }),
+        });
+        renderConfig(payload.config);
+        setBanner("Training settings updated.");
+      } catch (error) {
+        setBanner(error.message, true);
+      }
+    }
+
+    async function useBuiltinDataset() {
+      try {
+        const payload = await fetchJson("/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            dataset: {
+              source: "builtin",
+              name: "breast_cancer",
+              validation_fraction: Number(document.getElementById("config-validation-fraction").value),
+              label_column: Number(document.getElementById("dataset-label-column").value),
+            },
+          }),
+        });
+        renderConfig(payload.config);
+        setBanner("Builtin dataset selected.");
+      } catch (error) {
+        setBanner(error.message, true);
+      }
+    }
+
+    async function uploadDataset() {
+      const fileInput = document.getElementById("dataset-file");
+      if (!fileInput.files || fileInput.files.length === 0) {
+        setBanner("Choose a CSV dataset file first.", true);
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("dataset", fileInput.files[0]);
+      formData.append("label_column", document.getElementById("dataset-label-column").value);
+
+      try {
+        const payload = await fetchJson("/api/dataset/upload", {
+          method: "POST",
+          body: formData,
+        });
+        renderConfig({ ...cachedConfig, dataset: payload.dataset, workers: cachedConfig.workers });
+        setBanner(`CSV dataset uploaded (${payload.rows} rows, ${payload.columns} columns).`);
+      } catch (error) {
+        setBanner(error.message, true);
+      }
+    }
+
+    async function registerWorker(event) {
+      event.preventDefault();
+      const workerId = document.getElementById("worker-id-input").value.trim();
+      const endpoint = document.getElementById("worker-endpoint-input").value.trim();
+      if (!workerId || !endpoint) {
+        setBanner("Worker ID and endpoint are required.", true);
+        return;
+      }
+
+      try {
+        const payload = await fetchJson("/api/workers/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ worker_id: workerId, endpoint }),
+        });
+        renderConfig(payload.config);
+        await fetchStatus();
+        document.getElementById("worker-form").reset();
+        setBanner(`Worker ${workerId} is registered.`);
+      } catch (error) {
+        setBanner(error.message, true);
+      }
+    }
+
+    async function removeWorker(workerId) {
+      try {
+        const payload = await fetchJson("/api/workers/remove", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ worker_id: workerId }),
+        });
+        renderConfig(payload.config);
+        await fetchStatus();
+        setBanner(`Worker ${workerId} was removed.`);
+      } catch (error) {
+        setBanner(error.message, true);
+      }
+    }
+
+    document.getElementById("refresh-now").addEventListener("click", async () => {
+      try {
+        await fetchStatus();
+        await fetchConfig();
+        setBanner("Status refreshed.");
+      } catch (error) {
+        setBanner(error.message, true);
+      }
+    });
+    document.getElementById("start-training").addEventListener("click", startTraining);
+    document.getElementById("training-form").addEventListener("submit", saveSettings);
+    document.getElementById("worker-form").addEventListener("submit", registerWorker);
+    document.getElementById("use-builtin-dataset").addEventListener("click", useBuiltinDataset);
+    document.getElementById("upload-dataset").addEventListener("click", uploadDataset);
+
+    Promise.all([fetchConfig(), fetchStatus()]).catch((error) => setBanner(error.message, true));
     window.setInterval(fetchStatus, pollIntervalMs);
   </script>
 </body>

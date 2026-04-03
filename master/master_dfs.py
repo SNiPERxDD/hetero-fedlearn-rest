@@ -15,7 +15,7 @@ from typing import Any, Sequence
 
 import numpy as np
 import requests
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 from requests import Session
 from sklearn.datasets import load_breast_cancer
 from sklearn.linear_model import SGDClassifier
@@ -326,20 +326,21 @@ class FederatedMasterDFS:
         self,
         config: dict[str, Any],
         session: Session | None = None,
+        upload_dir: str | Path | None = None,
     ) -> None:
         """Initialise the master service from a configuration dictionary."""
 
         self.config = config
         self.session = session or requests.Session()
+        self.config_lock = threading.RLock()
         self.dataset_config = config.get("dataset", {})
         self.model_config = config.get("model", {})
         self.training_config = config.get("training", {})
         self.network_config = config.get("network", {})
         self.dashboard_config = config.get("dashboard", {})
-        self.workers = [
-            WorkerSpec(worker_id=item["worker_id"], endpoint=item["endpoint"].rstrip("/"))
-            for item in config.get("workers", [])
-        ]
+        self.upload_dir = Path(upload_dir or (Path(__file__).resolve().parent / "uploads"))
+        self.upload_dir.mkdir(parents=True, exist_ok=True)
+        self.workers = self._normalise_workers(config.get("workers", []))
         if not self.workers:
             raise ValueError("Configuration must define at least one worker.")
 
@@ -356,6 +357,210 @@ class FederatedMasterDFS:
         self.validation_features: np.ndarray | None = None
         self.validation_labels: np.ndarray | None = None
         self.block_assignments: list[BlockAssignment] = []
+
+    def _normalise_workers(self, workers_payload: Sequence[dict[str, Any]]) -> list[WorkerSpec]:
+        """Validate and normalise worker payloads into WorkerSpec instances."""
+
+        normalised_workers: list[WorkerSpec] = []
+        seen_worker_ids: set[str] = set()
+        seen_endpoints: set[str] = set()
+        for raw_worker in workers_payload:
+            worker_id = str(raw_worker.get("worker_id", "")).strip()
+            endpoint = str(raw_worker.get("endpoint", "")).strip().rstrip("/")
+            if not worker_id:
+                raise ValueError("Each worker requires a non-empty worker_id.")
+            if not endpoint:
+                raise ValueError(f"Worker {worker_id!r} requires a non-empty endpoint.")
+            if not endpoint.startswith(("http://", "https://")):
+                raise ValueError(f"Worker endpoint {endpoint!r} must start with http:// or https://.")
+            if worker_id in seen_worker_ids:
+                raise ValueError(f"Worker id {worker_id!r} is duplicated.")
+            if endpoint in seen_endpoints:
+                raise ValueError(f"Worker endpoint {endpoint!r} is duplicated.")
+            seen_worker_ids.add(worker_id)
+            seen_endpoints.add(endpoint)
+            normalised_workers.append(WorkerSpec(worker_id=worker_id, endpoint=endpoint))
+
+        if not normalised_workers:
+            raise ValueError("At least one worker must be configured.")
+        return normalised_workers
+
+    def _sync_worker_runtime(self) -> None:
+        """Rebuild worker runtime lookup structures from the current config."""
+
+        self.workers = self._normalise_workers(self.config.get("workers", []))
+        self.worker_map = {worker.worker_id: worker for worker in self.workers}
+
+    def training_is_active(self) -> bool:
+        """Return whether the training thread is currently active."""
+
+        thread = self.training_thread
+        return bool(thread and thread.is_alive())
+
+    def ensure_mutable(self) -> None:
+        """Guard configuration changes while training is running."""
+
+        if self.training_is_active() or self.state.training_active:
+            raise RuntimeError("Configuration cannot be changed while training is running.")
+
+    def runtime_config_snapshot(self) -> dict[str, Any]:
+        """Return a JSON-safe snapshot of the editable runtime configuration."""
+
+        with self.config_lock:
+            return {
+                "dataset": copy.deepcopy(self.dataset_config),
+                "model": copy.deepcopy(self.model_config),
+                "training": copy.deepcopy(self.training_config),
+                "network": copy.deepcopy(self.network_config),
+                "dashboard": copy.deepcopy(self.dashboard_config),
+                "workers": [
+                    {"worker_id": worker.worker_id, "endpoint": worker.endpoint}
+                    for worker in self.workers
+                ],
+            }
+
+    def update_runtime_config(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Update editable runtime configuration values safely."""
+
+        with self.config_lock:
+            self.ensure_mutable()
+            dataset_payload = payload.get("dataset", {})
+            training_payload = payload.get("training", {})
+            network_payload = payload.get("network", {})
+
+            if "source" in dataset_payload:
+                source = str(dataset_payload["source"]).strip()
+                if source not in {"builtin", "csv"}:
+                    raise ValueError("dataset.source must be either 'builtin' or 'csv'.")
+                self.dataset_config["source"] = source
+            if "name" in dataset_payload:
+                dataset_name = str(dataset_payload["name"]).strip()
+                if self.dataset_config.get("source", "builtin") == "builtin" and dataset_name != "breast_cancer":
+                    raise ValueError("Only the builtin 'breast_cancer' dataset is currently supported.")
+                self.dataset_config["name"] = dataset_name
+            if "validation_fraction" in dataset_payload:
+                validation_fraction = float(dataset_payload["validation_fraction"])
+                if not 0.05 <= validation_fraction < 0.5:
+                    raise ValueError("dataset.validation_fraction must be between 0.05 and 0.5.")
+                self.dataset_config["validation_fraction"] = validation_fraction
+            if "label_column" in dataset_payload:
+                self.dataset_config["label_column"] = int(dataset_payload["label_column"])
+
+            if "rounds" in training_payload:
+                rounds = int(training_payload["rounds"])
+                if rounds <= 0:
+                    raise ValueError("training.rounds must be positive.")
+                self.training_config["rounds"] = rounds
+            if "local_epochs" in training_payload:
+                local_epochs = int(training_payload["local_epochs"])
+                if local_epochs <= 0:
+                    raise ValueError("training.local_epochs must be positive.")
+                self.training_config["local_epochs"] = local_epochs
+            if "replication_factor" in training_payload:
+                replication_factor = int(training_payload["replication_factor"])
+                if replication_factor <= 0:
+                    raise ValueError("training.replication_factor must be positive.")
+                self.training_config["replication_factor"] = replication_factor
+
+            if "timeout_seconds" in network_payload:
+                timeout_seconds = float(network_payload["timeout_seconds"])
+                if timeout_seconds <= 0:
+                    raise ValueError("network.timeout_seconds must be positive.")
+                self.network_config["timeout_seconds"] = timeout_seconds
+
+            self.config["dataset"] = self.dataset_config
+            self.config["training"] = self.training_config
+            self.config["network"] = self.network_config
+            return self.runtime_config_snapshot()
+
+    def register_worker(self, worker_id: str, endpoint: str) -> dict[str, Any]:
+        """Register or update a worker endpoint in the runtime configuration."""
+
+        with self.config_lock:
+            self.ensure_mutable()
+            next_workers = self.runtime_config_snapshot()["workers"]
+            worker_registered = False
+            for worker in next_workers:
+                if worker["worker_id"] == worker_id:
+                    worker["endpoint"] = endpoint
+                    worker_registered = True
+                    break
+            if not worker_registered:
+                next_workers.append({"worker_id": worker_id, "endpoint": endpoint})
+
+            validated_workers = self._normalise_workers(next_workers)
+            self.config["workers"] = next_workers
+            self.workers = validated_workers
+            self.worker_map = {worker.worker_id: worker for worker in self.workers}
+            self.refresh_worker_health()
+            return {
+                "worker_id": worker_id,
+                "endpoint": endpoint,
+                "worker_count": len(self.workers),
+                "config": self.runtime_config_snapshot(),
+            }
+
+    def remove_worker(self, worker_id: str) -> dict[str, Any]:
+        """Remove a worker from the runtime configuration."""
+
+        with self.config_lock:
+            self.ensure_mutable()
+            next_workers = [
+                {"worker_id": worker.worker_id, "endpoint": worker.endpoint}
+                for worker in self.workers
+                if worker.worker_id != worker_id
+            ]
+            if len(next_workers) == len(self.workers):
+                raise ValueError(f"Worker {worker_id!r} is not configured.")
+            validated_workers = self._normalise_workers(next_workers)
+            self.config["workers"] = next_workers
+            self.workers = validated_workers
+            self.worker_map = {worker.worker_id: worker for worker in self.workers}
+            self.refresh_worker_health()
+            return {"worker_count": len(self.workers), "config": self.runtime_config_snapshot()}
+
+    def save_uploaded_dataset(
+        self,
+        *,
+        filename: str,
+        file_bytes: bytes,
+        label_column: int,
+    ) -> dict[str, Any]:
+        """Persist an uploaded CSV dataset and switch the runtime to CSV mode."""
+
+        with self.config_lock:
+            self.ensure_mutable()
+            if not filename.lower().endswith(".csv"):
+                raise ValueError("Uploaded dataset must be a CSV file.")
+            safe_stem = "".join(character for character in Path(filename).stem if character.isalnum() or character in {"-", "_"})
+            safe_stem = safe_stem or "dataset"
+            destination = self.upload_dir / f"{safe_stem}_{uuid.uuid4().hex[:8]}.csv"
+            destination.write_bytes(file_bytes)
+
+            try:
+                raw_data = np.genfromtxt(destination, delimiter=",", skip_header=1)
+                raw_data = np.atleast_2d(raw_data)
+            except Exception as error:
+                destination.unlink(missing_ok=True)
+                raise ValueError("Uploaded CSV dataset could not be parsed.") from error
+
+            if raw_data.shape[1] < 2:
+                destination.unlink(missing_ok=True)
+                raise ValueError("Uploaded CSV dataset must contain at least one feature column and one label column.")
+            if not (-raw_data.shape[1] <= label_column < raw_data.shape[1]):
+                destination.unlink(missing_ok=True)
+                raise ValueError("dataset.label_column is out of range for the uploaded CSV dataset.")
+
+            self.dataset_config["source"] = "csv"
+            self.dataset_config["name"] = destination.stem
+            self.dataset_config["csv_path"] = str(destination)
+            self.dataset_config["label_column"] = int(label_column)
+            self.config["dataset"] = self.dataset_config
+            return {
+                "dataset": self.runtime_config_snapshot()["dataset"],
+                "rows": int(raw_data.shape[0]),
+                "columns": int(raw_data.shape[1]),
+            }
 
     def load_dataset(self) -> tuple[np.ndarray, np.ndarray]:
         """Load the configured dataset into memory."""
@@ -774,7 +979,10 @@ def create_app(
     """Create and configure the DFS-lite master Flask application."""
 
     app = Flask(__name__, template_folder="templates")
-    runtime_service = service or FederatedMasterDFS(load_config(config_path))
+    runtime_service = service or FederatedMasterDFS(
+        load_config(config_path),
+        upload_dir=Path(config_path).resolve().parent / "uploads",
+    )
     app.config["MASTER_SERVICE"] = runtime_service
     app.config["CONFIG_PATH"] = str(config_path)
 
@@ -807,6 +1015,81 @@ def create_app(
         started = runtime_service.start_training_thread()
         runtime_service.refresh_worker_health()
         return jsonify({"started": started, "state": runtime_service.state.snapshot()})
+
+    @app.get("/api/config")
+    def config_snapshot() -> Any:
+        """Return the editable runtime configuration."""
+
+        return jsonify(runtime_service.runtime_config_snapshot())
+
+    @app.post("/api/config")
+    def update_config() -> Any:
+        """Update editable training or dataset configuration."""
+
+        payload = request.get_json(silent=True) or {}
+        try:
+            config_snapshot = runtime_service.update_runtime_config(payload)
+        except (RuntimeError, ValueError) as error:
+            status_code = 409 if isinstance(error, RuntimeError) else 400
+            return jsonify({"error": str(error)}), status_code
+        return jsonify({"config": config_snapshot}), 200
+
+    @app.post("/api/workers/register")
+    def register_worker() -> Any:
+        """Register or update a worker endpoint from the UI or a worker node."""
+
+        payload = request.get_json(silent=True) or {}
+        worker_id = str(payload.get("worker_id", "")).strip()
+        endpoint = str(payload.get("endpoint", "")).strip()
+        if not worker_id or not endpoint:
+            return jsonify({"error": "worker_id and endpoint are required."}), 400
+
+        try:
+            response_payload = runtime_service.register_worker(worker_id=worker_id, endpoint=endpoint)
+        except (RuntimeError, ValueError) as error:
+            status_code = 409 if isinstance(error, RuntimeError) else 400
+            return jsonify({"error": str(error)}), status_code
+        return jsonify(response_payload), 200
+
+    @app.post("/api/workers/remove")
+    def remove_worker() -> Any:
+        """Remove a worker endpoint from the runtime configuration."""
+
+        payload = request.get_json(silent=True) or {}
+        worker_id = str(payload.get("worker_id", "")).strip()
+        if not worker_id:
+            return jsonify({"error": "worker_id is required."}), 400
+
+        try:
+            response_payload = runtime_service.remove_worker(worker_id=worker_id)
+        except (RuntimeError, ValueError) as error:
+            status_code = 409 if isinstance(error, RuntimeError) else 400
+            return jsonify({"error": str(error)}), status_code
+        return jsonify(response_payload), 200
+
+    @app.post("/api/dataset/upload")
+    def upload_dataset() -> Any:
+        """Persist an uploaded CSV dataset and switch the runtime to CSV mode."""
+
+        uploaded_file = request.files.get("dataset")
+        if uploaded_file is None or not uploaded_file.filename:
+            return jsonify({"error": "A CSV dataset file is required."}), 400
+
+        try:
+            label_column = int(request.form.get("label_column", "-1"))
+        except ValueError:
+            return jsonify({"error": "label_column must be an integer."}), 400
+
+        try:
+            response_payload = runtime_service.save_uploaded_dataset(
+                filename=uploaded_file.filename,
+                file_bytes=uploaded_file.read(),
+                label_column=label_column,
+            )
+        except (RuntimeError, ValueError) as error:
+            status_code = 409 if isinstance(error, RuntimeError) else 400
+            return jsonify({"error": str(error)}), status_code
+        return jsonify(response_payload), 200
 
     return app
 

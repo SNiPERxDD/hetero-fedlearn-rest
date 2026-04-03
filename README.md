@@ -1,6 +1,6 @@
 # hetero-fedlearn-rest
 
-Distributed iterative federated learning over HTTP for a heterogeneous cluster with one master node and multiple worker nodes. The repository now contains both the preserved v1 baseline and the v1.1 DFS-lite extension, which adds disk-backed block storage, asynchronous dashboards, and zero-failure bootstrap scripts.
+Distributed iterative federated learning over HTTP for a heterogeneous cluster with one master node and multiple worker nodes. The repository now contains both the preserved v1 baseline and the v1.1 DFS-lite extension, which adds disk-backed block storage, asynchronous dashboards, a browser-driven control plane, and zero-failure bootstrap scripts.
 
 ## Operating Modes
 
@@ -11,8 +11,8 @@ Distributed iterative federated learning over HTTP for a heterogeneous cluster w
 
 - `master/master.py` orchestrates dataset preparation, worker initialization, round execution, retry-aware HTTP communication, FedAvg aggregation, and validation.
 - `worker/worker.py` exposes `/health`, `/initialize`, and `/train_round` and keeps local model state across communication rounds.
-- `master/master_dfs.py` upgrades the master into a NameNode-style service with a background training thread, live telemetry APIs, and a dashboard on `/`.
-- `worker/worker_dfs.py` upgrades the worker into a DataNode-style service that persists blocks to disk, reloads them per round, and serves storage or compute telemetry on `/`.
+- `master/master_dfs.py` upgrades the master into a NameNode-style service with a background training thread, live telemetry APIs, worker registration, dataset upload controls, and a dashboard on `/`.
+- `worker/worker_dfs.py` upgrades the worker into a DataNode-style service that persists blocks to disk, reloads them per round, serves storage or compute telemetry on `/`, and can register itself with the master from its own UI.
 - `config.json` defines the baseline dataset, model hyperparameters, training schedule, timeouts, retries, and worker endpoints.
 - `config_extended.json` defines the DFS-lite dashboard poll rate, block replication factor, and the extended worker topology.
 - `worker/Dockerfile` packages the baseline worker on `python:3.14-slim` with Flask, Waitress, scikit-learn, and a native Docker health check.
@@ -154,6 +154,8 @@ Validated outcome on the default extended configuration:
 - workers commit physical CSV blocks to local storage
 - the asynchronous master thread completes 10 communication rounds without blocking Flask
 - the master dashboard serves live block-map and worker-health state on `/api/status`
+- the master dashboard can register workers, upload a CSV dataset, and update training settings from the browser
+- the worker dashboard can register itself with the master by posting its advertised endpoint
 - validation accuracy reaches `0.9737`
 
 ## DFS-Lite Docker Packaging
@@ -195,6 +197,12 @@ For the strict extended-PRD bootstrap path, use `start_worker.bat`. It verifies 
 
 For the master side, use `start_master.sh`. It verifies Python `3.14+` by default, creates an isolated virtual environment, installs `master/requirements_extended.txt`, binds the DFS-lite master dashboard to `0.0.0.0:8080` by default, and opens the browser automatically. `CONFIG_PATH` and `MASTER_PORT` can be overridden when another DFS-lite config or dashboard port is required.
 
+After the services are up:
+
+- use the master dashboard to register worker endpoints, change training settings, switch back to the builtin dataset, or upload a CSV dataset
+- use the worker dashboard to register a worker with the master by entering the master URL and the advertised worker endpoint
+- start the federated run directly from the master dashboard without editing the config file manually
+
 ## Configuration
 
 The default [`config.json`](config.json) uses:
@@ -235,7 +243,7 @@ Notes:
 
 - the generated AI Studio browser mock was preserved separately during integration, but the committed deliverable is the cleaned `website/` package
 - the website copy reflects the real project entry points such as `start_dashboard.py`, `start_master.sh`, `start_worker.bat`, and `scripts/windows/onboard_worker.ps1`
-- the current site content includes the verified `14 passed` suite state and the `0.9737` DFS-lite validation result
+- the current site content includes the verified `18 passed` suite state and the `0.9737` DFS-lite validation result
 
 ## Worker API
 
@@ -250,6 +258,12 @@ Notes:
 - `GET /`
 - `GET /health`
 - `GET /api/status`
+- `GET /api/config` on the master
+- `POST /api/config` on the master
+- `POST /api/workers/register` on the master
+- `POST /api/workers/remove` on the master
+- `POST /api/dataset/upload` on the master
+- `POST /api/connect_master` on the worker
 - `POST /initialize` with `block_id`
 - `POST /train_round` with `block_id`
 
@@ -271,6 +285,7 @@ Current validated paths:
 - the DFS-lite master and worker dashboards served successfully during a live smoke run
 - DFS-lite block CSV files were written to disk and reused during local training rounds
 - `start_dashboard.py` now provides a one-command local dashboard bootstrap path for macOS and Linux
+- the DFS-lite control plane now supports worker self-registration, browser-side training configuration, and CSV dataset upload
 
 ## Notes
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import socket
 import threading
@@ -12,6 +13,7 @@ from werkzeug.serving import make_server
 
 from master.master_dfs import FederatedMasterDFS, create_app as create_master_app, load_config
 from worker.worker_dfs import create_app as create_worker_app
+from sklearn.datasets import load_breast_cancer
 
 
 def allocate_port() -> int:
@@ -303,3 +305,124 @@ def test_master_start_endpoint_is_idempotent(tmp_path: Path) -> None:
         for server in servers:
             if server.thread.is_alive():
                 server.stop()
+
+
+def test_master_runtime_config_and_dataset_upload_workflow(tmp_path: Path) -> None:
+    """The master control plane must accept config edits and CSV dataset uploads."""
+
+    worker_ports = [allocate_port(), allocate_port()]
+    storage_dirs = [tmp_path / "worker_1_storage", tmp_path / "worker_2_storage"]
+    servers = [
+        LocalDFSWorkerServer(worker_id="worker_1", port=worker_ports[0], storage_dir=storage_dirs[0]),
+        LocalDFSWorkerServer(worker_id="worker_2", port=worker_ports[1], storage_dir=storage_dirs[1]),
+    ]
+    for server in servers:
+        server.start()
+
+    try:
+        config_path = tmp_path / "config_extended.json"
+        write_extended_config(config_path, worker_ports)
+        service = FederatedMasterDFS(load_config(config_path), upload_dir=tmp_path / "uploads")
+        app = create_master_app(config_path=config_path, autostart=False, service=service)
+        client = app.test_client()
+
+        config_response = client.post(
+            "/api/config",
+            json={
+                "dataset": {"validation_fraction": 0.25},
+                "training": {"rounds": 3, "local_epochs": 2, "replication_factor": 1},
+                "network": {"timeout_seconds": 20},
+            },
+        )
+        assert config_response.status_code == 200
+        updated_config = config_response.get_json()["config"]
+        assert updated_config["training"]["rounds"] == 3
+        assert updated_config["training"]["local_epochs"] == 2
+        assert updated_config["dataset"]["validation_fraction"] == 0.25
+        assert updated_config["network"]["timeout_seconds"] == 20
+
+        features, labels = load_breast_cancer(return_X_y=True)
+        header = ",".join([f"feature_{index}" for index in range(features.shape[1])] + ["label"])
+        rows = [
+            ",".join([*(f"{value:.10f}" for value in row), str(int(label))])
+            for row, label in zip(features, labels, strict=True)
+        ]
+        csv_payload = f"{header}\n" + "\n".join(rows)
+        upload_response = client.post(
+            "/api/dataset/upload",
+            data={
+                "label_column": "-1",
+                "dataset": (io.BytesIO(csv_payload.encode("utf-8")), "breast_cancer_copy.csv"),
+            },
+            content_type="multipart/form-data",
+        )
+        assert upload_response.status_code == 200
+        upload_payload = upload_response.get_json()
+        assert upload_payload["dataset"]["source"] == "csv"
+        assert Path(upload_payload["dataset"]["csv_path"]).exists()
+
+        start_response = client.post("/api/start_training")
+        assert start_response.status_code == 200
+        service.wait_for_training(timeout=30)
+        final_status = client.get("/api/status").get_json()
+        assert final_status["training_completed"] is True
+        assert final_status["training_error"] is None
+        assert final_status["latest_validation_accuracy"] >= 0.9
+    finally:
+        for server in servers:
+            if server.thread.is_alive():
+                server.stop()
+
+
+def test_worker_can_register_itself_with_master_control_plane(tmp_path: Path) -> None:
+    """A worker must be able to register itself with a running master from its own API."""
+
+    worker_port = allocate_port()
+    master_port = allocate_port()
+    worker_storage_dir = tmp_path / "worker_storage"
+    worker_app = create_worker_app(default_worker_id="worker_self", storage_dir=worker_storage_dir)
+    worker_server = make_server("127.0.0.1", worker_port, worker_app)
+    worker_thread = threading.Thread(target=worker_server.serve_forever, daemon=True)
+    worker_thread.start()
+    time.sleep(0.1)
+
+    try:
+        config_path = tmp_path / "config_extended.json"
+        write_extended_config(config_path, [allocate_port(), allocate_port()])
+        service = FederatedMasterDFS(load_config(config_path), upload_dir=tmp_path / "uploads")
+        master_app = create_master_app(config_path=config_path, autostart=False, service=service)
+        master_server = make_server("127.0.0.1", master_port, master_app)
+        master_thread = threading.Thread(target=master_server.serve_forever, daemon=True)
+        master_thread.start()
+        time.sleep(0.1)
+
+        try:
+            worker_client = worker_app.test_client()
+            connect_response = worker_client.post(
+                "/api/connect_master",
+                json={
+                    "master_endpoint": f"http://127.0.0.1:{master_port}",
+                    "advertised_endpoint": f"http://127.0.0.1:{worker_port}",
+                },
+            )
+            assert connect_response.status_code == 200
+            connect_payload = connect_response.get_json()
+            assert connect_payload["connection"]["master_endpoint"] == f"http://127.0.0.1:{master_port}"
+
+            master_client = master_app.test_client()
+            config_payload = master_client.get("/api/config").get_json()
+            registered_worker = next(
+                worker for worker in config_payload["workers"] if worker["worker_id"] == "worker_self"
+            )
+            assert registered_worker["endpoint"] == f"http://127.0.0.1:{worker_port}"
+
+            status_payload = worker_client.get("/api/status").get_json()
+            assert status_payload["master_endpoint"] == f"http://127.0.0.1:{master_port}"
+            assert status_payload["advertised_endpoint"] == f"http://127.0.0.1:{worker_port}"
+            assert status_payload["last_registration_status"] == "connected"
+        finally:
+            master_server.shutdown()
+            master_thread.join(timeout=5)
+    finally:
+        worker_server.shutdown()
+        worker_thread.join(timeout=5)

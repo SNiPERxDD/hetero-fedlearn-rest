@@ -30,4 +30,4 @@ def test_website_copy_references_real_project_entry_points() -> None:
     assert "python3 start_dashboard.py --allow-unsupported-python --master-port 18080" in app_text
     assert "start_worker.bat" in app_text
     assert "scripts/windows/onboard_worker.ps1" in app_text
-    assert "14 passed" in app_text
+    assert "18 passed" in app_text

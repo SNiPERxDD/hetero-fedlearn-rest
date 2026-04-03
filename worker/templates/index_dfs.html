@@ -13,6 +13,8 @@
       --muted: #9fb0b7;
       --accent: #62d0b6;
       --accent-soft: rgba(98, 208, 182, 0.12);
+      --danger: #ff8f84;
+      --warning: #ffcc84;
       --border: rgba(255, 255, 255, 0.08);
       --shadow: 0 22px 60px rgba(0, 0, 0, 0.28);
     }
@@ -33,22 +35,24 @@
     }
 
     .shell {
-      max-width: 1180px;
+      max-width: 1280px;
       margin: 0 auto;
       padding: 26px 20px 40px;
     }
 
     .hero,
+    .control-grid,
     .grid {
       display: grid;
       gap: 18px;
-    }
-
-    .hero {
-      grid-template-columns: 1.2fr 1fr;
       margin-bottom: 18px;
     }
 
+    .hero {
+      grid-template-columns: 1.15fr 0.85fr;
+    }
+
+    .control-grid,
     .grid {
       grid-template-columns: 1fr 1fr;
     }
@@ -76,27 +80,37 @@
       line-height: 1;
     }
 
-    .subcopy {
+    h2 {
+      margin: 0 0 14px;
+    }
+
+    .subcopy,
+    .panel-copy,
+    .storage-note {
       margin: 0;
       color: var(--muted);
       line-height: 1.6;
     }
 
-    .stats {
+    .stats,
+    .form-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
       margin-top: 18px;
     }
 
-    .stat-card {
+    .stat-card,
+    .connection-status,
+    .worker-strip {
       background: var(--panel-strong);
       border: 1px solid var(--border);
       border-radius: 18px;
       padding: 16px;
     }
 
-    .stat-label {
+    .stat-label,
+    .field label {
       color: var(--muted);
       text-transform: uppercase;
       letter-spacing: 0.08em;
@@ -107,6 +121,59 @@
       margin-top: 8px;
       font-size: 1.75rem;
       font-weight: 700;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field.span-2 {
+      grid-column: span 2;
+    }
+
+    .field input {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--panel-strong);
+      color: var(--text);
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--accent);
+      color: #0f181d;
+      box-shadow: 0 12px 28px rgba(98, 208, 182, 0.18);
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .status.idle {
+      background: rgba(255, 180, 92, 0.14);
+      color: var(--warning);
+    }
+
+    .connection-status.error {
+      background: rgba(255, 143, 132, 0.12);
+      color: var(--danger);
     }
 
     table {
@@ -134,32 +201,23 @@
       font-size: 0.84rem;
     }
 
-    .status {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: var(--accent-soft);
-      color: var(--accent);
-      font-weight: 700;
-    }
-
-    .status.idle {
-      background: rgba(255, 180, 92, 0.14);
-      color: #ffcc84;
-    }
-
-    .storage-note {
-      color: var(--muted);
-      line-height: 1.5;
+    .worker-stack {
+      display: grid;
+      gap: 12px;
       margin-top: 12px;
     }
 
-    @media (max-width: 960px) {
+    @media (max-width: 980px) {
       .hero,
-      .grid {
+      .control-grid,
+      .grid,
+      .stats,
+      .form-grid {
         grid-template-columns: 1fr;
+      }
+
+      .field.span-2 {
+        grid-column: auto;
       }
     }
   </style>
@@ -171,8 +229,8 @@
         <div class="eyebrow">DFS-Lite DataNode</div>
         <h1 id="worker-title">{{ worker_id }}</h1>
         <p class="subcopy">
-          This worker stores federated training blocks on local disk and reloads them for each local epoch round.
-          The panel below exposes both storage persistence and the latest compute telemetry.
+          This worker stores federated training blocks on local disk, reloads them on each round,
+          and can now register itself with the master directly from the browser.
         </p>
       </div>
 
@@ -198,20 +256,26 @@
       </div>
     </section>
 
-    <section class="grid">
+    <section class="control-grid">
       <div class="panel">
-        <h2>Block Inventory</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Block</th>
-              <th>Bytes</th>
-              <th>Samples</th>
-              <th>Path</th>
-            </tr>
-          </thead>
-          <tbody id="block-body"></tbody>
-        </table>
+        <h2>Connect To Master</h2>
+        <p class="panel-copy">
+          Register this worker with the master control plane without editing the master's worker list manually.
+        </p>
+        <form id="connect-form" class="form-grid">
+          <div class="field span-2">
+            <label for="master-endpoint">Master Endpoint</label>
+            <input id="master-endpoint" type="url" placeholder="http://192.168.1.25:8080">
+          </div>
+          <div class="field span-2">
+            <label for="advertised-endpoint">Advertised Worker Endpoint</label>
+            <input id="advertised-endpoint" type="url" placeholder="http://192.168.1.40:5000">
+          </div>
+          <div class="field span-2">
+            <button type="submit" id="connect-master">Register With Master</button>
+          </div>
+        </form>
+        <div class="connection-status" id="connection-status">No master connected yet.</div>
       </div>
 
       <div class="panel">
@@ -235,11 +299,50 @@
               <th>Block Count</th>
               <td id="block-count">0</td>
             </tr>
+            <tr>
+              <th>Master Endpoint</th>
+              <td class="mono" id="current-master-endpoint">n/a</td>
+            </tr>
+            <tr>
+              <th>Advertised Endpoint</th>
+              <td class="mono" id="current-advertised-endpoint">n/a</td>
+            </tr>
           </tbody>
         </table>
         <p class="storage-note">
           Data locality is proven when block files persist on disk here and the master sends only model parameters during training rounds.
         </p>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2>Block Inventory</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Block</th>
+              <th>Bytes</th>
+              <th>Samples</th>
+              <th>Path</th>
+            </tr>
+          </thead>
+          <tbody id="block-body"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Connection And Compute State</h2>
+        <div class="worker-stack">
+          <div class="worker-strip">
+            <span class="stat-label">Registration State</span>
+            <strong id="registration-state">idle</strong>
+          </div>
+          <div class="worker-strip">
+            <span class="stat-label">Last Registration Error</span>
+            <strong id="registration-error">n/a</strong>
+          </div>
+        </div>
       </div>
     </section>
   </div>
@@ -266,6 +369,12 @@
       return `${value.toFixed(unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`;
     }
 
+    function setConnectionBanner(message, isError = false) {
+      const banner = document.getElementById("connection-status");
+      banner.textContent = message;
+      banner.className = isError ? "connection-status error" : "connection-status";
+    }
+
     function renderState(state) {
       document.getElementById("worker-title").textContent = state.worker_id;
       document.getElementById("worker-id").textContent = state.worker_id;
@@ -276,6 +385,19 @@
       document.getElementById("storage-dir").textContent = state.storage_dir;
       document.getElementById("last-round").textContent = state.last_round_number ?? "n/a";
       document.getElementById("block-count").textContent = state.block_count;
+      document.getElementById("current-master-endpoint").textContent = state.master_endpoint || "n/a";
+      document.getElementById("current-advertised-endpoint").textContent = state.advertised_endpoint || "n/a";
+      document.getElementById("registration-state").textContent = state.last_registration_status || "idle";
+      document.getElementById("registration-error").textContent = state.last_registration_error || "n/a";
+
+      if (state.master_endpoint) {
+        document.getElementById("master-endpoint").value = state.master_endpoint;
+      }
+      if (state.advertised_endpoint) {
+        document.getElementById("advertised-endpoint").value = state.advertised_endpoint;
+      } else if (!document.getElementById("advertised-endpoint").value) {
+        document.getElementById("advertised-endpoint").value = window.location.origin;
+      }
 
       const readyPill = document.getElementById("ready-pill");
       readyPill.textContent = state.ready ? "Ready" : "Idle";
@@ -292,13 +414,49 @@
       `).join("");
     }
 
+    async function fetchJson(url, options = {}) {
+      const response = await fetch(url, options);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || `Request failed for ${url}`);
+      }
+      return payload;
+    }
+
     async function fetchStatus() {
-      const response = await fetch("/api/status");
-      const state = await response.json();
+      const state = await fetchJson("/api/status");
       renderState(state);
     }
 
-    fetchStatus();
+    async function connectToMaster(event) {
+      event.preventDefault();
+      const masterEndpoint = document.getElementById("master-endpoint").value.trim();
+      const advertisedEndpoint = document.getElementById("advertised-endpoint").value.trim() || window.location.origin;
+      if (!masterEndpoint) {
+        setConnectionBanner("Master endpoint is required.", true);
+        return;
+      }
+
+      try {
+        const payload = await fetchJson("/api/connect_master", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            master_endpoint: masterEndpoint,
+            advertised_endpoint: advertisedEndpoint,
+          }),
+        });
+        renderState(payload.state);
+        setConnectionBanner(`Connected to ${payload.connection.master_endpoint} and registered as ${payload.connection.worker_id}.`);
+      } catch (error) {
+        setConnectionBanner(error.message, true);
+        await fetchStatus();
+      }
+    }
+
+    document.getElementById("connect-form").addEventListener("submit", connectToMaster);
+
+    fetchStatus().catch((error) => setConnectionBanner(error.message, true));
     window.setInterval(fetchStatus, 1500);
   </script>
 </body>

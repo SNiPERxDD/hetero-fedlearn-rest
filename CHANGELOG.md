@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-04-03 21:43:02 IST
+- Extended the DFS-lite master into a browser-driven control plane with runtime training config updates, worker registration or removal, CSV dataset upload, and safe mutation guards while training is active. Files: `master/master_dfs.py`, `master/templates/index_dfs.html`, `CHANGELOG.md`
+- Extended the DFS-lite worker dashboard so a worker can register itself with a master endpoint and expose connection state in its runtime telemetry, and added the required HTTP dependency for the worker service. Files: `worker/worker_dfs.py`, `worker/templates/index_dfs.html`, `worker/requirements.txt`, `CHANGELOG.md`
+- Added integration and browser coverage for the new control-plane workflows and refreshed repository or website copy to reflect the verified `18 passed` state. Files: `tests/test_dfs_lite_workflow.py`, `tests/test_dashboard_ui.py`, `tests/test_website_assets.py`, `website/src/App.tsx`, `README.md`, `PRD.md`, `PRD_Extended.md`, `CHANGELOG.md`
+
 ## 2026-04-03 21:16:51 IST
 - Added a clean React website package that replaces the unusable AI Studio browser scaffold with a project-specific frontend covering architecture, DFS-lite telemetry, quick-start commands, onboarding paths, and verified runtime evidence. Files: `website/package.json`, `website/package-lock.json`, `website/index.html`, `website/src/App.tsx`, `website/src/main.tsx`, `website/src/styles.css`, `website/tsconfig.json`, `website/vite.config.ts`, `CHANGELOG.md`
 - Added repository integration for the website package, including build-artifact ignores, website validation tests, and README or PRD updates describing how to run and build the frontend. Files: `.gitignore`, `tests/test_website_assets.py`, `README.md`, `PRD.md`, `PRD_Extended.md`, `CHANGELOG.md`

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import numpy as np
+import requests
 from flask import Flask, jsonify, render_template, request
 from sklearn.linear_model import SGDClassifier
 from sklearn.metrics import log_loss
@@ -123,6 +124,10 @@ class WorkerDFSState:
     last_local_loss: float | None = None
     last_samples_processed: int = 0
     last_round_number: int | None = None
+    master_endpoint: str | None = None
+    advertised_endpoint: str | None = None
+    last_registration_status: str | None = None
+    last_registration_error: str | None = None
     lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
     def ensure_storage_dir(self) -> None:
@@ -289,6 +294,58 @@ class WorkerDFSState:
                 "last_local_loss": self.last_local_loss,
                 "last_samples_processed": self.last_samples_processed,
                 "last_round_number": self.last_round_number,
+                "master_endpoint": self.master_endpoint,
+                "advertised_endpoint": self.advertised_endpoint,
+                "last_registration_status": self.last_registration_status,
+                "last_registration_error": self.last_registration_error,
+            }
+
+    def connect_to_master(
+        self,
+        *,
+        master_endpoint: str,
+        advertised_endpoint: str,
+        timeout_seconds: float = 15.0,
+    ) -> dict[str, Any]:
+        """Register this worker with a master control plane."""
+
+        resolved_master_endpoint = master_endpoint.strip().rstrip("/")
+        resolved_advertised_endpoint = advertised_endpoint.strip().rstrip("/")
+        if not resolved_master_endpoint.startswith(("http://", "https://")):
+            raise ValueError("master_endpoint must start with http:// or https://.")
+        if not resolved_advertised_endpoint.startswith(("http://", "https://")):
+            raise ValueError("advertised_endpoint must start with http:// or https://.")
+
+        payload = {
+            "worker_id": self.worker_id,
+            "endpoint": resolved_advertised_endpoint,
+        }
+        try:
+            response = requests.post(
+                f"{resolved_master_endpoint}/api/workers/register",
+                json=payload,
+                timeout=timeout_seconds,
+            )
+            response.raise_for_status()
+            master_payload = response.json()
+        except (requests.RequestException, ValueError) as error:
+            with self.lock:
+                self.master_endpoint = resolved_master_endpoint
+                self.advertised_endpoint = resolved_advertised_endpoint
+                self.last_registration_status = "failed"
+                self.last_registration_error = str(error)
+            raise RuntimeError("Worker could not register with the master.") from error
+
+        with self.lock:
+            self.master_endpoint = resolved_master_endpoint
+            self.advertised_endpoint = resolved_advertised_endpoint
+            self.last_registration_status = "connected"
+            self.last_registration_error = None
+            return {
+                "worker_id": self.worker_id,
+                "master_endpoint": self.master_endpoint,
+                "advertised_endpoint": self.advertised_endpoint,
+                "master_response": master_payload,
             }
 
 
@@ -389,6 +446,29 @@ def create_app(
             return jsonify({"error": str(error)}), status_code
 
         return jsonify(response_payload), 200
+
+    @app.post("/api/connect_master")
+    def connect_master() -> tuple[Any, int]:
+        """Register this worker endpoint with a master from the worker UI."""
+
+        payload = request.get_json(silent=True) or {}
+        master_endpoint = str(payload.get("master_endpoint", "")).strip()
+        advertised_endpoint = str(payload.get("advertised_endpoint", "")).strip()
+        if not master_endpoint:
+            return jsonify({"error": "master_endpoint is required."}), 400
+        if not advertised_endpoint:
+            advertised_endpoint = request.host_url.rstrip("/")
+
+        try:
+            response_payload = state.connect_to_master(
+                master_endpoint=master_endpoint,
+                advertised_endpoint=advertised_endpoint,
+            )
+        except (RuntimeError, ValueError) as error:
+            status_code = 409 if isinstance(error, RuntimeError) else 400
+            return jsonify({"error": str(error), "state": state.status_payload()}), status_code
+
+        return jsonify({"connection": response_payload, "state": state.status_payload()}), 200
 
     return app
 

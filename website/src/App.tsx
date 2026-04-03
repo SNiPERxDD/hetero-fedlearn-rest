@@ -13,7 +13,7 @@ type FeatureCard = {
 const heroMetrics: Metric[] = [
   { label: "Modes", value: "2", detail: "Baseline runtime plus DFS-lite extension." },
   { label: "Validation", value: "0.9737", detail: "Verified end-to-end accuracy on the default extended run." },
-  { label: "Tests", value: "14", detail: "Backend, browser, onboarding, Docker-backed, and smoke coverage." },
+  { label: "Tests", value: "18", detail: "Backend, browser, onboarding, control-plane, Docker-backed, and smoke coverage." },
   { label: "Workers", value: "HTTP", detail: "Heterogeneous workers communicate through retry-aware REST calls." },
 ];
 
@@ -37,7 +37,7 @@ const dfsCards: FeatureCard[] = [
   },
   {
     title: "Live Dashboards",
-    description: "The system exposes a master dashboard and worker dashboards with visible proof of locality, progress, and runtime health.",
+    description: "The system exposes a master control plane and worker dashboards with visible proof of locality, progress, runtime health, and cluster registration.",
     bullets: ["Cluster state", "Worker health table", "Storage usage and local loss"]
   },
   {
@@ -51,6 +51,8 @@ const validationItems = [
   "Browser-level Chromium flow against the live DFS-lite dashboards",
   "Baseline worker API and end-to-end HTTP federated training tests",
   "DFS-lite persistence, failover, and idempotent start control coverage",
+  "Master-side runtime config mutation and CSV dataset upload tests",
+  "Worker self-registration into the master control plane",
   "Onboarding script verification for Bash, batch, and PowerShell paths",
   "Docker-backed worker validation and live master orchestration smoke tests"
 ];
@@ -145,7 +147,7 @@ function App() {
             <p className="lede">
               Hetero FedLearn REST is a production-minded federated learning system for heterogeneous worker clusters.
               The baseline path keeps raw partitions fixed at workers after initialization, while the DFS-lite extension
-              adds disk-backed block locality, live dashboards, operator launchers, and stronger verification.
+              adds disk-backed block locality, live dashboards, browser-driven worker registration, dataset upload, operator launchers, and stronger verification.
             </p>
             <div className="hero-actions">
               <a className="button button-primary" href="#architecture">View Architecture</a>
@@ -325,12 +327,12 @@ function App() {
               <p>`start_dashboard.py` launches local worker containers, waits for health, forwards the master config, and removes containers on exit.</p>
             </article>
             <article className="operator-card">
-              <h3>Dockerized Worker Path</h3>
-              <p>`start_worker.bat` builds the DFS-lite worker image, mounts host storage, publishes the worker port, and opens the worker dashboard.</p>
+              <h3>Master Control Plane</h3>
+              <p>The master dashboard can now register workers, upload a CSV dataset, update training settings, and start the asynchronous federated loop directly from the browser.</p>
             </article>
             <article className="operator-card">
-              <h3>Windows Firewall Onboarding</h3>
-              <p>`scripts/windows/onboard_worker.ps1` handles firewall rule creation, optional network profile hardening, container launch, and `/health` verification.</p>
+              <h3>Worker Self-Registration</h3>
+              <p>The worker dashboard can register itself with the master by posting its advertised endpoint, while Windows onboarding still handles firewall and container startup.</p>
             </article>
           </div>
         </section>
@@ -343,7 +345,7 @@ function App() {
           <div className="validation-layout">
             <div className="verification-panel">
               <span className="panel-tag">Verification Summary</span>
-              <strong>14 passed</strong>
+              <strong>18 passed</strong>
               <p>Backend, browser, onboarding, Docker-backed, and smoke-run coverage are all included in the current repository validation path.</p>
               <ul>
                 {validationItems.map((item) => (
