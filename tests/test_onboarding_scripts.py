@@ -68,6 +68,22 @@ def test_start_worker_python_launcher_compiles_and_declares_contract() -> None:
     assert 'DFS-lite worker started on http://127.0.0.1:' in script_text
 
 
+def test_stop_all_python_launcher_compiles_and_declares_contract() -> None:
+    """The stop launcher must target repo-managed ports and worker containers."""
+
+    script_path = REPO_ROOT / "stop_all.py"
+    subprocess.run(["python3", "-m", "py_compile", str(script_path)], check=True, capture_output=True, text=True)
+
+    script_text = script_path.read_text(encoding="utf-8")
+    assert '"--ports"' in script_text
+    assert '"--container-prefix"' in script_text
+    assert '"hetero-fedlearn-dashboard"' in script_text
+    assert '"worker-node"' in script_text
+    assert '"-m master.master_dfs"' in script_text
+    assert '"-m worker.worker_dfs"' in script_text
+    assert '"No repo-managed master or worker services were found."' in script_text
+
+
 def test_windows_batch_onboarding_contract_is_present() -> None:
     """The Windows batch launcher must build, mount storage, and expose the worker port."""
 

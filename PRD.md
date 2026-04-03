@@ -125,6 +125,7 @@ project_root/
 ├── config.json               # Defines total rounds, epochs, and worker endpoints
 ├── start_dashboard.py        # One-command DFS-lite dashboard bootstrap for localhost demos
 ├── start_master.py           # Cross-platform DFS-lite master bootstrap
+├── stop_all.py               # Repo-scoped cleanup utility for managed ports and workers
 ├── start_worker.py           # Cross-platform DFS-lite worker bootstrap
 ├── website/                  # React website package for the project showcase and quick-start paths
 ├── pyproject.toml            # Pytest configuration for local verification
@@ -153,6 +154,7 @@ project_root/
 *   **Container Packaging:** `worker/Dockerfile` now includes a container health check and has been validated against Python 3.14-slim, Flask 3.1, scikit-learn 1.8, and Waitress 3.0.
 *   **Windows Onboarding:** `scripts/windows/onboard_worker.ps1` automates the inbound firewall rule, optional network profile hardening to `Private`, optional image build/pull, worker container startup, and local `/health` verification.
 *   **Cross-Platform Launchers:** `start_master.py` and `start_worker.py` now provide first-class Python entry points for running the DFS-lite master on Windows or the DFS-lite worker on macOS/Linux without depending on shell-specific onboarding wrappers.
+*   **Repo Cleanup Utility:** `stop_all.py` now stops the repo-managed master, native workers, and known worker containers so occupied demo ports can be reclaimed without manual process hunting.
 *   **Standard Documentation:** `README.md` now provides a conventional operator-facing entry point for setup, local simulation, container validation, Windows onboarding, and verification.
 *   **Dashboard Quick Start:** `start_dashboard.py` now bootstraps the local DFS-lite demo end-to-end by building the worker image, starting localhost worker containers from the configured endpoints, health-checking them, and chaining into the Python master launcher.
 *   **Browser Control Plane:** The DFS-lite master and worker dashboards now support browser-driven worker registration, UI-side training configuration, and CSV dataset upload without manual config edits after the services are running.

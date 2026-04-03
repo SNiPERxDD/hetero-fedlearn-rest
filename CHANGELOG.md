@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-04-04 00:05:54 IST
+- Added `stop_all.py`, a repo-scoped Python cleanup utility that terminates the managed DFS-lite master or native workers on known ports and removes the known worker containers so demo ports can be reclaimed quickly. Files: `stop_all.py`, `CHANGELOG.md`
+- Added stop-script coverage and updated the operator docs or website copy to document the cleanup entry point and reflect the expanded `23 passed` suite state. Files: `tests/test_onboarding_scripts.py`, `tests/test_website_assets.py`, `README.md`, `PRD.md`, `PRD_Extended.md`, `website/src/App.tsx`, `CHANGELOG.md`
+
 ## 2026-04-04 00:03:00 IST
 - Added Python-first cross-platform launchers for the DFS-lite control plane: `start_master.py` for the master, `start_worker.py` for native or Docker worker startup, and updated `start_dashboard.py` or `start_master.sh` so the dashboard bootstrap now chains into the Python master launcher while the shell script remains a compatibility wrapper. Files: `start_master.py`, `start_worker.py`, `start_dashboard.py`, `start_master.sh`, `CHANGELOG.md`
 - Expanded onboarding verification and operator documentation for role-swapped deployments, updated `.gitignore` for launcher-generated environments or storage, and refreshed the website copy to reflect the new Python entry points and the `22 passed` suite state. Files: `.gitignore`, `tests/test_onboarding_scripts.py`, `tests/test_website_assets.py`, `README.md`, `PRD.md`, `PRD_Extended.md`, `website/src/App.tsx`, `CHANGELOG.md`

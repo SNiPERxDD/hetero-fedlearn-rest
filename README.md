@@ -20,6 +20,7 @@ Distributed iterative federated learning over HTTP for a heterogeneous cluster w
 - `scripts/windows/onboard_worker.ps1` automates Windows worker setup for firewall rules, optional network profile hardening, image build or pull, container launch, and health verification.
 - `start_master.py` provides the preferred cross-platform DFS-lite master bootstrap.
 - `start_worker.py` provides the preferred cross-platform DFS-lite worker bootstrap in either native Python or Docker mode.
+- `stop_all.py` provides a repo-scoped cleanup utility that stops the managed master, native workers, and known worker containers so the ports can be reclaimed quickly.
 - `start_dashboard.py`, `start_master.sh`, and `start_worker.bat` remain available as compatibility bootstrap paths for the extended PRD.
 - `website/` contains a clean React website package for the project overview, architecture, validation summary, and quick-start flows.
 
@@ -34,6 +35,7 @@ Distributed iterative federated learning over HTTP for a heterogeneous cluster w
 ├── config.json
 ├── config_extended.json
 ├── start_master.py
+├── stop_all.py
 ├── start_worker.py
 ├── master/
 ├── worker/
@@ -232,6 +234,28 @@ The runtime is no longer tied to "mac master, Windows workers" at the launcher l
 
 `start_dashboard.py` remains a localhost demo path for macOS/Linux because it builds and orchestrates local worker containers on the same machine.
 
+## Stop And Cleanup
+
+To free the repo-managed control-plane ports quickly, run:
+
+```bash
+python3 stop_all.py
+```
+
+By default this stops repo-managed listeners on `18080`, `5000`, `5001`, and `5002`, and removes the known worker containers started by the Python launchers or dashboard bootstrap.
+
+You can override the target ports or container names:
+
+```bash
+python3 stop_all.py --ports 18180 15050 --container-name worker-node --container-prefix hetero-fedlearn-dashboard
+```
+
+To inspect what would be stopped without terminating anything:
+
+```bash
+python3 stop_all.py --dry-run
+```
+
 After the services are up:
 
 - use the master dashboard to register worker endpoints, change training settings, switch back to the builtin dataset, or upload a CSV dataset
@@ -284,8 +308,8 @@ npm run build
 Notes:
 
 - the generated AI Studio browser mock was preserved separately during integration, but the committed deliverable is the cleaned `website/` package
-- the website copy reflects the real project entry points such as `start_dashboard.py`, `start_master.py`, `start_worker.py`, `start_worker.bat`, and `scripts/windows/onboard_worker.ps1`
-- the current site content includes the verified `22 passed` suite state and the `0.9737` DFS-lite validation result
+- the website copy reflects the real project entry points such as `start_dashboard.py`, `start_master.py`, `start_worker.py`, `stop_all.py`, `start_worker.bat`, and `scripts/windows/onboard_worker.ps1`
+- the current site content includes the verified `23 passed` suite state and the `0.9737` DFS-lite validation result
 
 ## Worker API
 

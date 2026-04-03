@@ -116,6 +116,7 @@ project_root/
 ├── config_extended.json      # NEW: DFS-lite config and dashboard settings
 ├── start_dashboard.py        # NEW: macOS/Linux full dashboard quick start
 ├── start_master.py           # NEW: Cross-platform master bootstrap
+├── stop_all.py               # NEW: Repo-scoped stop/cleanup utility
 ├── start_master.sh           # NEW: Compatibility wrapper for the Python bootstrap
 ├── start_worker.py           # NEW: Cross-platform worker bootstrap
 ├── start_worker.bat          # NEW: Windows compatibility bootstrap
@@ -145,7 +146,7 @@ project_root/
 *   **Doctrine Procedure Followed:** The working v1 runtime remains intact in `master/master.py` and `worker/worker.py`. The DFS-lite upgrade was implemented in copied variants so the known-good baseline stays unchanged.
 *   **DFS-Lite Storage Layer:** Workers now write block CSV files to disk via `worker/worker_dfs.py`, expose local storage telemetry, and reload those blocks during `/train_round`.
 *   **Asynchronous Master:** `master/master_dfs.py` now serves a Flask dashboard on `/`, exposes `/api/status` and `/api/start_training`, runs the training loop inside a daemon thread, and accepts browser-driven worker registration, runtime config changes, and CSV dataset uploads.
-*   **Bootstrap Path:** `start_dashboard.py`, `start_master.py`, `start_worker.py`, and the compatibility wrappers `start_master.sh` or `start_worker.bat` implement the bootstrap flow required by this extension, including Python version checks, virtual environment setup, Docker daemon checks, stale container cleanup, localhost worker health checks, and Windows host volume mounts.
+*   **Bootstrap Path:** `start_dashboard.py`, `start_master.py`, `start_worker.py`, `stop_all.py`, and the compatibility wrappers `start_master.sh` or `start_worker.bat` implement the bootstrap flow required by this extension, including Python version checks, virtual environment setup, Docker daemon checks, stale container cleanup, localhost worker health checks, fast port reclamation, and Windows host volume mounts.
 *   **Worker Join Flow:** `worker/worker_dfs.py` now lets a worker register itself with the master control plane directly from the worker dashboard.
 *   **Website Layer:** `website/` now provides a clean React front-end package for presenting the architecture, telemetry model, onboarding path, and current validation state without depending on the AI Studio browser scaffold. It is intentionally separate from the live Flask control plane, which remains served directly by `master/master_dfs.py` and `worker/worker_dfs.py`.
 *   **Validation Status:** The DFS-lite worker persistence tests, control-plane integration tests, asynchronous master tests, onboarding launcher tests, and browser dashboard tests pass under `pytest`, and live smoke runs successfully served the dashboards from the Python master and worker launchers.

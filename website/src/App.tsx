@@ -13,7 +13,7 @@ type FeatureCard = {
 const heroMetrics: Metric[] = [
   { label: "Modes", value: "2", detail: "Baseline runtime plus DFS-lite extension." },
   { label: "Validation", value: "0.9737", detail: "Verified end-to-end accuracy on the default extended run." },
-  { label: "Tests", value: "22", detail: "Backend, browser, onboarding, control-plane, Docker-backed, and smoke coverage." },
+  { label: "Tests", value: "23", detail: "Backend, browser, onboarding, control-plane, Docker-backed, and smoke coverage." },
   { label: "Workers", value: "HTTP", detail: "Heterogeneous workers communicate through retry-aware REST calls." },
 ];
 
@@ -43,7 +43,7 @@ const dfsCards: FeatureCard[] = [
   {
     title: "Bootstrap Path",
     description: "The repo now ships Python-first operator launchers for cross-platform master and worker startup, plus compatibility wrappers and Windows firewall onboarding.",
-    bullets: ["start_dashboard.py", "start_master.py", "start_worker.py"]
+    bullets: ["start_dashboard.py", "start_master.py", "start_worker.py", "stop_all.py"]
   }
 ];
 
@@ -89,6 +89,7 @@ const repoTree = [
   "config_extended.json",
   "start_dashboard.py",
   "start_master.py",
+  "stop_all.py",
   "start_master.sh",
   "start_worker.py",
   "start_worker.bat",
@@ -115,6 +116,10 @@ const commands = [
   {
     title: "Python Quick Start",
     command: "python3 start_dashboard.py --allow-unsupported-python --master-port 18080"
+  },
+  {
+    title: "Stop Everything",
+    command: "python3 stop_all.py"
   }
 ];
 
@@ -336,6 +341,10 @@ function App() {
               <h3>Cross-Platform Worker</h3>
               <p>`start_worker.py` supports a native macOS/Linux worker path and a Docker-backed worker path, while the worker dashboard still supports self-registration into the master.</p>
             </article>
+            <article className="operator-card">
+              <h3>Fast Cleanup</h3>
+              <p>`stop_all.py` frees the repo-managed master and worker ports and removes the known worker containers without hunting through processes manually.</p>
+            </article>
           </div>
         </section>
 
@@ -347,7 +356,7 @@ function App() {
           <div className="validation-layout">
             <div className="verification-panel">
               <span className="panel-tag">Verification Summary</span>
-              <strong>22 passed</strong>
+              <strong>23 passed</strong>
               <p>Backend, browser, onboarding, Docker-backed, and smoke-run coverage are all included in the current repository validation path.</p>
               <ul>
                 {validationItems.map((item) => (
