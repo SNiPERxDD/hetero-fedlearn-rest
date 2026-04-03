@@ -138,6 +138,49 @@ def test_worker_persists_blocks_and_reports_status(tmp_path: Path) -> None:
     assert train_response.get_json()["samples_processed"] == 2
 
 
+def test_worker_train_round_reads_block_from_disk_each_time(tmp_path: Path) -> None:
+    """The DFS-lite worker must fail if the persisted block on disk becomes invalid."""
+
+    storage_dir = tmp_path / "storage"
+    app = create_worker_app(default_worker_id="worker_test", storage_dir=storage_dir)
+    client = app.test_client()
+
+    initialize_response = client.post(
+        "/initialize",
+        json={
+            "block_id": "blk_disk",
+            "worker_id": "worker_test",
+            "features": [[0.1, 0.2], [0.3, 0.4]],
+            "labels": [0, 1],
+            "classes": [0, 1],
+            "model_config": {
+                "loss": "log_loss",
+                "alpha": 0.0001,
+                "eta0": 0.001,
+                "learning_rate": "constant",
+                "penalty": "l2",
+                "random_state": 42,
+            },
+        },
+    )
+    assert initialize_response.status_code == 200
+
+    block_path = storage_dir / "blk_disk.csv"
+    block_path.write_text("feature_0,feature_1,label\n0.2,0.1\n", encoding="utf-8")
+
+    train_response = client.post(
+        "/train_round",
+        json={
+            "block_id": "blk_disk",
+            "round_number": 1,
+            "global_weights": [0.0, 0.0],
+            "global_intercept": [0.0],
+            "local_epochs": 1,
+        },
+    )
+    assert train_response.status_code == 400
+
+
 def test_dfs_master_training_thread_and_dashboard(tmp_path: Path) -> None:
     """The DFS-lite master should complete training and expose dashboard state."""
 
@@ -181,3 +224,82 @@ def test_dfs_master_training_thread_and_dashboard(tmp_path: Path) -> None:
     finally:
         for server in servers:
             server.stop()
+
+
+def test_dfs_master_fails_over_to_replica_when_primary_worker_drops(tmp_path: Path) -> None:
+    """The DFS-lite master must reroute block training to a surviving replica."""
+
+    worker_ports = [allocate_port(), allocate_port()]
+    storage_dirs = [tmp_path / "worker_1_storage", tmp_path / "worker_2_storage"]
+    servers = [
+        LocalDFSWorkerServer(worker_id="worker_1", port=worker_ports[0], storage_dir=storage_dirs[0]),
+        LocalDFSWorkerServer(worker_id="worker_2", port=worker_ports[1], storage_dir=storage_dirs[1]),
+    ]
+    for server in servers:
+        server.start()
+
+    try:
+        config_path = tmp_path / "config_extended.json"
+        write_extended_config(config_path, worker_ports)
+        service = FederatedMasterDFS(load_config(config_path))
+
+        block_payloads, _, _ = service.prepare_blocks()
+        assignments = service.initialise_blocks(block_payloads)
+
+        servers[0].stop()
+        worker_health = service.refresh_worker_health()
+        assert worker_health["worker_1"]["healthy"] is False
+        assert worker_health["worker_2"]["healthy"] is True
+
+        block_updates = [
+            service.train_block(
+                assignment=assignment,
+                round_number=1,
+                local_epochs=int(service.training_config["local_epochs"]),
+            )
+            for assignment in assignments
+        ]
+        assert all(update.worker_id == "worker_2" for update in block_updates)
+
+        service.global_weights, service.global_intercept = service.aggregate_updates(block_updates)
+        validation_accuracy, validation_loss = service.evaluate_global_model()
+        assert validation_accuracy >= 0.9
+        assert validation_loss < 0.4
+    finally:
+        servers[1].stop()
+
+
+def test_master_start_endpoint_is_idempotent(tmp_path: Path) -> None:
+    """The dashboard start endpoint must not spawn duplicate training threads."""
+
+    worker_ports = [allocate_port(), allocate_port()]
+    storage_dirs = [tmp_path / "worker_1_storage", tmp_path / "worker_2_storage"]
+    servers = [
+        LocalDFSWorkerServer(worker_id="worker_1", port=worker_ports[0], storage_dir=storage_dirs[0]),
+        LocalDFSWorkerServer(worker_id="worker_2", port=worker_ports[1], storage_dir=storage_dirs[1]),
+    ]
+    for server in servers:
+        server.start()
+
+    try:
+        config_path = tmp_path / "config_extended.json"
+        write_extended_config(config_path, worker_ports)
+        service = FederatedMasterDFS(load_config(config_path))
+        app = create_master_app(config_path=config_path, autostart=False, service=service)
+        client = app.test_client()
+
+        first_response = client.post("/api/start_training")
+        second_response = client.post("/api/start_training")
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+        assert first_response.get_json()["started"] is True
+        assert second_response.get_json()["started"] is False
+
+        service.wait_for_training(timeout=30)
+        final_status = client.get("/api/status").get_json()
+        assert final_status["training_completed"] is True
+        assert final_status["training_error"] is None
+    finally:
+        for server in servers:
+            if server.thread.is_alive():
+                server.stop()

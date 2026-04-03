@@ -99,6 +99,43 @@ def test_worker_rejects_training_before_initialisation() -> None:
     assert "initialised" in response.get_json()["error"].lower()
 
 
+def test_worker_rejects_weight_dimension_mismatch() -> None:
+    """The baseline worker must reject rounds with incompatible weight dimensions."""
+
+    app = create_app(default_worker_id="worker_test")
+    client = app.test_client()
+    initialize_response = client.post(
+        "/initialize",
+        json={
+            "worker_id": "worker_test",
+            "features": [[0.1, 0.2], [0.3, 0.4]],
+            "labels": [0, 1],
+            "classes": [0, 1],
+            "model_config": {
+                "loss": "log_loss",
+                "alpha": 0.0001,
+                "eta0": 0.001,
+                "learning_rate": "constant",
+                "penalty": "l2",
+                "random_state": 42,
+            },
+        },
+    )
+    assert initialize_response.status_code == 200
+
+    train_response = client.post(
+        "/train_round",
+        json={
+            "round_number": 1,
+            "global_weights": [0.0, 0.0, 0.0],
+            "global_intercept": [0.0],
+            "local_epochs": 1,
+        },
+    )
+    assert train_response.status_code == 400
+    assert "dimension" in train_response.get_json()["error"].lower()
+
+
 def test_federated_training_roundtrip(tmp_path: Path) -> None:
     """The master should complete a full multi-round federated training session."""
 
