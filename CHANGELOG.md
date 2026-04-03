@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-04-04 00:48:14 IST
+- Expanded `.gitignore` to cover broader Python cache artifacts, virtual environments, logs, local archives, editor metadata, notebook checkpoints, Node build outputs, and repo-managed runtime storage so tracked source stays clean while local launcher or build noise remains untracked. Files: `.gitignore`, `CHANGELOG.md`
+
 ## 2026-04-04 00:39:48 IST
 - Refined the README presentation to match the current repository state with cleaner hierarchy, compact operator tables, restrained icon markers, and clearer scan paths for launch, cleanup, deployment, and verification. Files: `README.md`, `CHANGELOG.md`
 

@@ -1,12 +1,71 @@
-__pycache__/
-.pytest_cache/
+# OS metadata
 .DS_Store
-*.pyc
+Thumbs.db
+Desktop.ini
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.nox/
+.tox/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Python virtual environments
+.venv/
+.venv*/
+venv/
+env/
+ENV/
+
+# Repo-managed runtime environments and storage
 .venv_master_dfs/
 .venv_worker_dfs/
 .dashboard_storage/
 storage/
+
+# Logs, local reports, and temp artifacts
+*.log
+*.out
+*.err
+*.pid
+*.pid.lock
+
+# Archives and downloaded local artifacts
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+*.bz2
+*.7z
+*.rar
+
+# Editor and IDE settings
+.vscode/
+.idea/
+*.iml
+
+# Jupyter
+.ipynb_checkpoints/
+
+# JavaScript and website build outputs
+node_modules/
+dist/
+build/
+coverage/
 website/node_modules/
 website/dist/
 website/tsconfig.tsbuildinfo
+
+# Generated website or external tool artifacts
 website_generated/
+
+# Frankenreview artifacts
+.frankenreview/
