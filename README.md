@@ -125,7 +125,7 @@ python3 start_dashboard.py --allow-unsupported-python
 
 This launcher builds the DFS-lite worker image, starts one local worker container per localhost endpoint declared in [`config_extended.json`](config_extended.json), waits for each `/health` endpoint, and then chains into [`start_master.sh`](start_master.sh). When the master process exits, the worker containers are removed automatically.
 
-If `8080` is already occupied on the host, override it explicitly:
+The default master dashboard port is `18080`, which avoids common local collisions with other tools that often bind `8080`.
 
 ```bash
 python3 start_dashboard.py --allow-unsupported-python --master-port 18080
@@ -141,12 +141,12 @@ python3 -m worker.worker_dfs --port 5002 --worker-id worker_2 --storage-dir /tmp
 Start the DFS-lite master dashboard with the background training thread enabled:
 
 ```bash
-python3 -m master.master_dfs --config config_extended.json --host 127.0.0.1 --port 8080 --auto-start
+python3 -m master.master_dfs --config config_extended.json --host 127.0.0.1 --port 18080 --auto-start
 ```
 
 Open the dashboards:
 
-- `http://127.0.0.1:8080/` for the NameNode-style master view
+- `http://127.0.0.1:18080/` for the NameNode-style master view
 - `http://127.0.0.1:5001/` and `http://127.0.0.1:5002/` for the DataNode worker views
 
 Validated outcome on the default extended configuration:
@@ -195,7 +195,7 @@ After onboarding, update the `workers` section in [`config.json`](config.json) o
 
 For the strict extended-PRD bootstrap path, use `start_worker.bat`. It verifies `docker info`, removes the stale container, builds `worker/Dockerfile_extended`, mounts `%cd%\\storage` into `/app/datanode_storage`, and opens the worker dashboard automatically.
 
-For the master side, use `start_master.sh`. It verifies Python `3.14+` by default, creates an isolated virtual environment, installs `master/requirements_extended.txt`, binds the DFS-lite master dashboard to `0.0.0.0:8080` by default, and opens the browser automatically. `CONFIG_PATH` and `MASTER_PORT` can be overridden when another DFS-lite config or dashboard port is required.
+For the master side, use `start_master.sh`. It verifies Python `3.14+` by default, creates an isolated virtual environment, installs `master/requirements_extended.txt`, binds the DFS-lite master dashboard to `0.0.0.0:18080` by default, and opens the browser automatically. `CONFIG_PATH` and `MASTER_PORT` can be overridden when another DFS-lite config or dashboard port is required.
 
 After the services are up:
 

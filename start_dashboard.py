@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--master-port",
         type=int,
-        default=8080,
+        default=18080,
         help="Host port for the DFS-lite master dashboard.",
     )
     parser.add_argument(

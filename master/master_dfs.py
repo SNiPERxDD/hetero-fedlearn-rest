@@ -1100,7 +1100,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="DFS-lite federated learning master service.")
     parser.add_argument("--config", default="config_extended.json", help="Path to the JSON configuration file.")
     parser.add_argument("--host", default="0.0.0.0", help="Host interface to bind.")
-    parser.add_argument("--port", default=8080, type=int, help="Port to bind.")
+    parser.add_argument("--port", default=18080, type=int, help="Port to bind.")
     parser.add_argument("--log-level", default="INFO", help="Logging level for the master process.")
     parser.add_argument(
         "--auto-start",

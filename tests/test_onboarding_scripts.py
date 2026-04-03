@@ -18,7 +18,7 @@ def test_start_master_shell_script_is_valid_bash() -> None:
     script_text = script_path.read_text(encoding="utf-8")
     assert "Python 3.14+ is required for start_master.sh" in script_text
     assert 'CONFIG_PATH="${CONFIG_PATH:-$ROOT_DIR/config_extended.json}"' in script_text
-    assert 'MASTER_PORT="${MASTER_PORT:-8080}"' in script_text
+    assert 'MASTER_PORT="${MASTER_PORT:-18080}"' in script_text
     assert "--config \"$CONFIG_PATH\"" in script_text
     assert "--auto-start" in script_text
     assert "master/requirements_extended.txt" in script_text

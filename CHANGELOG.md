@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-04-03 22:39:08 IST
+- Changed the DFS-lite master dashboard default port from `8080` to `18080` across the bootstrap scripts, manual CLI path, worker UI placeholder, and website or README copy to avoid the verified local Appsmith collision on `8080`. Files: `start_dashboard.py`, `start_master.sh`, `master/master_dfs.py`, `worker/templates/index_dfs.html`, `website/src/App.tsx`, `README.md`, `tests/test_onboarding_scripts.py`, `CHANGELOG.md`
+
 ## 2026-04-03 21:48:15 IST
 - Added a browser-driven end-to-end control-plane test that registers a worker from the worker UI, uploads a CSV dataset from the master UI, updates training settings, and starts training entirely through the dashboards. Files: `tests/test_dashboard_ui.py`, `CHANGELOG.md`
 - Refreshed the website and README verification copy to reflect the stronger `19 passed` suite state after the new browser control-plane coverage. Files: `website/src/App.tsx`, `tests/test_website_assets.py`, `README.md`, `CHANGELOG.md`

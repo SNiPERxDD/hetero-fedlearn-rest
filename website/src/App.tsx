@@ -104,7 +104,7 @@ const commands = [
   },
   {
     title: "DFS-lite Master",
-    command: "python3 -m master.master_dfs --config config_extended.json --host 127.0.0.1 --port 8080 --auto-start"
+    command: "python3 -m master.master_dfs --config config_extended.json --host 127.0.0.1 --port 18080 --auto-start"
   },
   {
     title: "DFS-lite Worker",
@@ -240,7 +240,7 @@ function App() {
             <div className="dashboard-window">
               <div className="window-topline">
                 <span>Master Dashboard</span>
-                <span>http://127.0.0.1:8080/</span>
+                <span>http://127.0.0.1:18080/</span>
               </div>
               <div className="dashboard-metrics">
                 {dashboardPanels.map((panel) => (
