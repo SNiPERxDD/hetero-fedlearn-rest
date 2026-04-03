@@ -2,3 +2,7 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 *.pyc
+website/node_modules/
+website/dist/
+website/tsconfig.tsbuildinfo
+website_generated/

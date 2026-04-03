@@ -116,6 +116,7 @@ project_root/
 ├── start_dashboard.py        # NEW: macOS/Linux full dashboard quick start
 ├── start_master.sh           # NEW: Mac bootstrap
 ├── start_worker.bat          # NEW: Windows bootstrap
+├── website/                  # NEW: React project website
 │
 ├── master/
 │   ├── master.py             # PRESERVED: v1 baseline
@@ -142,4 +143,5 @@ project_root/
 *   **DFS-Lite Storage Layer:** Workers now write block CSV files to disk via `worker/worker_dfs.py`, expose local storage telemetry, and reload those blocks during `/train_round`.
 *   **Asynchronous Master:** `master/master_dfs.py` now serves a Flask dashboard on `/`, exposes `/api/status` and `/api/start_training`, and runs the training loop inside a daemon thread.
 *   **Bootstrap Path:** `start_dashboard.py`, `start_master.sh`, and `start_worker.bat` implement the bootstrap flow required by this extension, including Python version checks, virtual environment setup, Docker daemon checks, stale container cleanup, localhost worker health checks, and Windows host volume mounts.
+*   **Website Layer:** `website/` now provides a clean React front-end package for presenting the architecture, telemetry model, onboarding path, and current validation state without depending on the AI Studio browser scaffold.
 *   **Validation Status:** The DFS-lite worker persistence tests and asynchronous master tests pass under `pytest`, and a live local smoke run successfully served the dashboards, persisted block files to disk, and completed 10 rounds to 0.9737 validation accuracy.

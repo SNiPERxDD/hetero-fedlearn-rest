@@ -19,6 +19,7 @@ Distributed iterative federated learning over HTTP for a heterogeneous cluster w
 - `worker/Dockerfile_extended` packages the DFS-lite worker with templates and a persistent datanode storage directory.
 - `scripts/windows/onboard_worker.ps1` automates Windows worker setup for firewall rules, optional network profile hardening, image build or pull, container launch, and health verification.
 - `start_dashboard.py`, `start_master.sh`, and `start_worker.bat` provide the strict bootstrap path required by the extended PRD.
+- `website/` contains a clean React website package for the project overview, architecture, validation summary, and quick-start flows.
 
 ## Repository Layout
 
@@ -210,6 +211,31 @@ The default [`config_extended.json`](config_extended.json) adds:
 - `replication_factor` for DFS-lite block placement
 - `health_timeout_seconds` for dashboard-safe worker polling
 - `dashboard.poll_interval_ms` for the UI refresh cadence
+
+## React Website
+
+The repository now includes a clean React website package in [`website/`](website) for presenting the architecture, DFS-lite extension, quick-start flows, and current verification state.
+
+Run it locally:
+
+```bash
+cd website
+npm install
+npm run dev
+```
+
+Build it for production:
+
+```bash
+cd website
+npm run build
+```
+
+Notes:
+
+- the generated AI Studio browser mock was preserved separately during integration, but the committed deliverable is the cleaned `website/` package
+- the website copy reflects the real project entry points such as `start_dashboard.py`, `start_master.sh`, `start_worker.bat`, and `scripts/windows/onboard_worker.ps1`
+- the current site content includes the verified `14 passed` suite state and the `0.9737` DFS-lite validation result
 
 ## Worker API
 
