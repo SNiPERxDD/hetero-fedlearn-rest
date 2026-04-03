@@ -256,7 +256,7 @@ Notes:
 
 - the generated AI Studio browser mock was preserved separately during integration, but the committed deliverable is the cleaned `website/` package
 - the website copy reflects the real project entry points such as `start_dashboard.py`, `start_master.sh`, `start_worker.bat`, and `scripts/windows/onboard_worker.ps1`
-- the current site content includes the verified `19 passed` suite state and the `0.9737` DFS-lite validation result
+- the current site content includes the verified `20 passed` suite state and the `0.9737` DFS-lite validation result
 
 ## Worker API
 

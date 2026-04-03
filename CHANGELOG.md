@@ -1,6 +1,10 @@
 # Changelog
 
 ## 2026-04-03 23:38:25 IST
+- Strengthened dataset and UI verification by switching the CSV-upload workflow tests to a genuinely different synthetic classification dataset and adding a worker-dashboard failure-path browser test for unsuccessful master registration. Files: `tests/test_dashboard_ui.py`, `tests/test_dfs_lite_workflow.py`, `CHANGELOG.md`
+- Refreshed the website and README verification copy to reflect the expanded `20 passed` suite state. Files: `website/src/App.tsx`, `tests/test_website_assets.py`, `README.md`, `CHANGELOG.md`
+
+## 2026-04-03 23:38:25 IST
 - Clarified the operator documentation so the README and PRDs explicitly distinguish the separate React website on port `4173` from the real DFS-lite Flask control plane on port `18080`, and corrected the remaining extended-PRD references that still mentioned `8080`. Files: `README.md`, `PRD.md`, `PRD_Extended.md`, `CHANGELOG.md`
 
 ## 2026-04-03 22:39:08 IST

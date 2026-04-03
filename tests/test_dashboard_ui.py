@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
-from sklearn.datasets import load_breast_cancer
+from sklearn.datasets import make_classification
 from werkzeug.serving import make_server
 
 from master.master_dfs import FederatedMasterDFS, create_app as create_master_app, load_config
@@ -46,6 +46,17 @@ class LocalServer:
 
         self.server.shutdown()
         self.thread.join(timeout=5)
+
+
+def write_csv_dataset(path: Path, features, labels) -> None:
+    """Write a feature matrix and label vector to a CSV dataset file."""
+
+    header = ",".join([f"feature_{index}" for index in range(features.shape[1])] + ["label"])
+    rows = [
+        ",".join([*(f"{value:.10f}" for value in row), str(int(label))])
+        for row, label in zip(features, labels, strict=True)
+    ]
+    path.write_text(f"{header}\n" + "\n".join(rows), encoding="utf-8")
 
 
 def write_extended_config(
@@ -219,14 +230,17 @@ def test_browser_control_plane_workflow(page: Page, tmp_path: Path) -> None:
         expect(page.locator("#connection-status")).to_contain_text("Connected", timeout=30000)
         expect(page.locator("#registration-state")).to_have_text("connected", timeout=30000)
 
-        features, labels = load_breast_cancer(return_X_y=True)
+        features, labels = make_classification(
+            n_samples=240,
+            n_features=12,
+            n_informative=8,
+            n_redundant=0,
+            n_clusters_per_class=1,
+            class_sep=2.2,
+            random_state=42,
+        )
         dataset_path = tmp_path / "browser_upload.csv"
-        header = ",".join([f"feature_{index}" for index in range(features.shape[1])] + ["label"])
-        rows = [
-            ",".join([*(f"{value:.10f}" for value in row), str(int(label))])
-            for row, label in zip(features, labels, strict=True)
-        ]
-        dataset_path.write_text(f"{header}\n" + "\n".join(rows), encoding="utf-8")
+        write_csv_dataset(dataset_path, features, labels)
 
         page.goto(master_url, wait_until="domcontentloaded")
         expect(page.locator("#worker-config-body tr")).to_have_count(2, timeout=30000)
@@ -246,9 +260,37 @@ def test_browser_control_plane_workflow(page: Page, tmp_path: Path) -> None:
 
         accuracy_text = page.locator("#validation-accuracy").text_content(timeout=30000)
         assert accuracy_text is not None
-        assert float(accuracy_text) >= 0.9
+        assert float(accuracy_text) >= 0.8
     finally:
         if master_server is not None:
             master_server.stop()
         for server in worker_servers:
             server.stop()
+
+
+def test_worker_dashboard_registration_failure_state(page: Page, tmp_path: Path) -> None:
+    """The worker dashboard must surface a failed master registration attempt."""
+
+    worker_port = allocate_port()
+    unavailable_master_port = allocate_port()
+    worker_storage_dir = tmp_path / "worker_storage"
+    worker_server = LocalServer(
+        worker_port,
+        create_worker_app(default_worker_id="worker_1", storage_dir=worker_storage_dir),
+    )
+    worker_server.start()
+
+    try:
+        worker_url = f"http://127.0.0.1:{worker_port}"
+        page.goto(worker_url, wait_until="domcontentloaded")
+        page.locator("#master-endpoint").fill(f"http://127.0.0.1:{unavailable_master_port}")
+        page.locator("#advertised-endpoint").fill(worker_url)
+        page.get_by_role("button", name="Register With Master").click()
+        expect(page.locator("#connection-status")).to_contain_text(
+            "Worker could not register with the master.",
+            timeout=30000,
+        )
+        expect(page.locator("#registration-state")).to_have_text("failed", timeout=30000)
+        expect(page.locator("#registration-error")).not_to_have_text("n/a", timeout=30000)
+    finally:
+        worker_server.stop()

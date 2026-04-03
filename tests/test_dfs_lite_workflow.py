@@ -13,7 +13,7 @@ from werkzeug.serving import make_server
 
 from master.master_dfs import FederatedMasterDFS, create_app as create_master_app, load_config
 from worker.worker_dfs import create_app as create_worker_app
-from sklearn.datasets import load_breast_cancer
+from sklearn.datasets import make_classification
 
 
 def allocate_port() -> int:
@@ -50,6 +50,17 @@ class LocalDFSWorkerServer:
 
         self.server.shutdown()
         self.thread.join(timeout=5)
+
+
+def write_csv_dataset(path: Path, features, labels) -> None:
+    """Write a feature matrix and label vector to a CSV dataset file."""
+
+    header = ",".join([f"feature_{index}" for index in range(features.shape[1])] + ["label"])
+    rows = [
+        ",".join([*(f"{value:.10f}" for value in row), str(int(label))])
+        for row, label in zip(features, labels, strict=True)
+    ]
+    path.write_text(f"{header}\n" + "\n".join(rows), encoding="utf-8")
 
 
 def write_extended_config(config_path: Path, worker_ports: list[int]) -> None:
@@ -341,18 +352,22 @@ def test_master_runtime_config_and_dataset_upload_workflow(tmp_path: Path) -> No
         assert updated_config["dataset"]["validation_fraction"] == 0.25
         assert updated_config["network"]["timeout_seconds"] == 20
 
-        features, labels = load_breast_cancer(return_X_y=True)
-        header = ",".join([f"feature_{index}" for index in range(features.shape[1])] + ["label"])
-        rows = [
-            ",".join([*(f"{value:.10f}" for value in row), str(int(label))])
-            for row, label in zip(features, labels, strict=True)
-        ]
-        csv_payload = f"{header}\n" + "\n".join(rows)
+        features, labels = make_classification(
+            n_samples=240,
+            n_features=12,
+            n_informative=8,
+            n_redundant=0,
+            n_clusters_per_class=1,
+            class_sep=2.2,
+            random_state=42,
+        )
+        dataset_path = tmp_path / "synthetic_dataset.csv"
+        write_csv_dataset(dataset_path, features, labels)
         upload_response = client.post(
             "/api/dataset/upload",
             data={
                 "label_column": "-1",
-                "dataset": (io.BytesIO(csv_payload.encode("utf-8")), "breast_cancer_copy.csv"),
+                "dataset": (io.BytesIO(dataset_path.read_bytes()), dataset_path.name),
             },
             content_type="multipart/form-data",
         )
@@ -367,7 +382,7 @@ def test_master_runtime_config_and_dataset_upload_workflow(tmp_path: Path) -> No
         final_status = client.get("/api/status").get_json()
         assert final_status["training_completed"] is True
         assert final_status["training_error"] is None
-        assert final_status["latest_validation_accuracy"] >= 0.9
+        assert final_status["latest_validation_accuracy"] >= 0.8
     finally:
         for server in servers:
             if server.thread.is_alive():

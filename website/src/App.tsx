@@ -13,7 +13,7 @@ type FeatureCard = {
 const heroMetrics: Metric[] = [
   { label: "Modes", value: "2", detail: "Baseline runtime plus DFS-lite extension." },
   { label: "Validation", value: "0.9737", detail: "Verified end-to-end accuracy on the default extended run." },
-  { label: "Tests", value: "18", detail: "Backend, browser, onboarding, control-plane, Docker-backed, and smoke coverage." },
+  { label: "Tests", value: "20", detail: "Backend, browser, onboarding, control-plane, Docker-backed, and smoke coverage." },
   { label: "Workers", value: "HTTP", detail: "Heterogeneous workers communicate through retry-aware REST calls." },
 ];
 
@@ -345,7 +345,7 @@ function App() {
           <div className="validation-layout">
             <div className="verification-panel">
               <span className="panel-tag">Verification Summary</span>
-              <strong>19 passed</strong>
+              <strong>20 passed</strong>
               <p>Backend, browser, onboarding, Docker-backed, and smoke-run coverage are all included in the current repository validation path.</p>
               <ul>
                 {validationItems.map((item) => (
