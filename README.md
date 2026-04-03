@@ -18,7 +18,7 @@ Distributed iterative federated learning over HTTP for a heterogeneous cluster w
 - `worker/Dockerfile` packages the baseline worker on `python:3.14-slim` with Flask, Waitress, scikit-learn, and a native Docker health check.
 - `worker/Dockerfile_extended` packages the DFS-lite worker with templates and a persistent datanode storage directory.
 - `scripts/windows/onboard_worker.ps1` automates Windows worker setup for firewall rules, optional network profile hardening, image build or pull, container launch, and health verification.
-- `start_master.sh` and `start_worker.bat` provide the strict bootstrap path required by the extended PRD.
+- `start_dashboard.py`, `start_master.sh`, and `start_worker.bat` provide the strict bootstrap path required by the extended PRD.
 
 ## Repository Layout
 
@@ -116,6 +116,20 @@ python3 -m master.master --config config.json --log-level INFO
 
 ## DFS-Lite Extension Demo
 
+For the fastest local dashboard demo on macOS or Linux, run:
+
+```bash
+python3 start_dashboard.py --allow-unsupported-python
+```
+
+This launcher builds the DFS-lite worker image, starts one local worker container per localhost endpoint declared in [`config_extended.json`](config_extended.json), waits for each `/health` endpoint, and then chains into [`start_master.sh`](start_master.sh). When the master process exits, the worker containers are removed automatically.
+
+If `8080` is already occupied on the host, override it explicitly:
+
+```bash
+python3 start_dashboard.py --allow-unsupported-python --master-port 18080
+```
+
 Start two DFS-lite workers in separate terminals:
 
 ```bash
@@ -178,7 +192,7 @@ After onboarding, update the `workers` section in [`config.json`](config.json) o
 
 For the strict extended-PRD bootstrap path, use `start_worker.bat`. It verifies `docker info`, removes the stale container, builds `worker/Dockerfile_extended`, mounts `%cd%\\storage` into `/app/datanode_storage`, and opens the worker dashboard automatically.
 
-For the master side, use `start_master.sh`. It verifies Python `3.14+` by default, creates an isolated virtual environment, installs `master/requirements_extended.txt`, binds the DFS-lite master dashboard to `0.0.0.0:8080`, and opens the browser automatically.
+For the master side, use `start_master.sh`. It verifies Python `3.14+` by default, creates an isolated virtual environment, installs `master/requirements_extended.txt`, binds the DFS-lite master dashboard to `0.0.0.0:8080` by default, and opens the browser automatically. `CONFIG_PATH` and `MASTER_PORT` can be overridden when another DFS-lite config or dashboard port is required.
 
 ## Configuration
 
@@ -230,6 +244,7 @@ Current validated paths:
 - two live baseline worker containers pass health checks and complete a full master training run
 - the DFS-lite master and worker dashboards served successfully during a live smoke run
 - DFS-lite block CSV files were written to disk and reused during local training rounds
+- `start_dashboard.py` now provides a one-command local dashboard bootstrap path for macOS and Linux
 
 ## Notes
 

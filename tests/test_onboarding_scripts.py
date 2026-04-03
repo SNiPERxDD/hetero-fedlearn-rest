@@ -17,9 +17,28 @@ def test_start_master_shell_script_is_valid_bash() -> None:
 
     script_text = script_path.read_text(encoding="utf-8")
     assert "Python 3.14+ is required for start_master.sh" in script_text
+    assert 'CONFIG_PATH="${CONFIG_PATH:-$ROOT_DIR/config_extended.json}"' in script_text
+    assert 'MASTER_PORT="${MASTER_PORT:-8080}"' in script_text
     assert "--config \"$CONFIG_PATH\"" in script_text
     assert "--auto-start" in script_text
     assert "master/requirements_extended.txt" in script_text
+
+
+def test_start_dashboard_python_launcher_compiles_and_declares_contract() -> None:
+    """The dashboard quick-start launcher must build workers and chain into the master bootstrap."""
+
+    script_path = REPO_ROOT / "start_dashboard.py"
+    subprocess.run(["python3", "-m", "py_compile", str(script_path)], check=True, capture_output=True, text=True)
+
+    script_text = script_path.read_text(encoding="utf-8")
+    assert 'parser.add_argument(' in script_text
+    assert '"--master-port"' in script_text
+    assert '"docker"' in script_text
+    assert '"build"' in script_text
+    assert 'ensure_port_available' in script_text
+    assert 'wait_for_worker_health' in script_text
+    assert 'start_dashboard.py only supports localhost worker endpoints' in script_text
+    assert 'start_master.sh' in script_text
 
 
 def test_windows_batch_onboarding_contract_is_present() -> None:

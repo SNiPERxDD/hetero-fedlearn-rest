@@ -4,8 +4,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 VENV_DIR="$ROOT_DIR/.venv_master_dfs"
-CONFIG_PATH="$ROOT_DIR/config_extended.json"
-MASTER_URL="http://127.0.0.1:8080"
+CONFIG_PATH="${CONFIG_PATH:-$ROOT_DIR/config_extended.json}"
+MASTER_HOST="${MASTER_HOST:-0.0.0.0}"
+MASTER_PORT="${MASTER_PORT:-8080}"
+MASTER_URL="http://127.0.0.1:${MASTER_PORT}"
 
 "$PYTHON_BIN" - <<'PY'
 import os
@@ -27,4 +29,4 @@ elif command -v xdg-open >/dev/null 2>&1; then
   (sleep 3 && xdg-open "$MASTER_URL") &
 fi
 
-exec python -m master.master_dfs --config "$CONFIG_PATH" --host 0.0.0.0 --port 8080 --log-level INFO --auto-start
+exec python -m master.master_dfs --config "$CONFIG_PATH" --host "$MASTER_HOST" --port "$MASTER_PORT" --log-level INFO --auto-start

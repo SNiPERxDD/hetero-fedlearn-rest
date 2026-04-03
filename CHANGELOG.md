@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-04-03 21:04:56 IST
+- Added a Python quick-start launcher for the DFS-lite dashboards that builds or reuses local worker containers, preflights localhost ports, waits for worker health, forwards master config and port overrides, and cleans up worker containers on exit. Files: `start_dashboard.py`, `start_master.sh`, `CHANGELOG.md`
+- Updated repository documentation and script verification to use the Python quick-start path, including the new `--master-port` override and the launcher contract checks in the automated test suite. Files: `README.md`, `PRD.md`, `PRD_Extended.md`, `tests/test_onboarding_scripts.py`, `CHANGELOG.md`
+
 ## 2026-04-03 20:52:00 IST
 - Added browser-level DFS-lite dashboard verification with a live Chromium flow that starts background training, validates worker telemetry, checks disk-backed block persistence, and exercises the mobile responsive layout. Files: `tests/test_dashboard_ui.py`, `CHANGELOG.md`
 - Added onboarding-script verification covering Bash syntax plus Windows launcher and PowerShell contract checks for Docker availability, storage mounting, firewall setup, and health probing. Files: `tests/test_onboarding_scripts.py`, `CHANGELOG.md`
