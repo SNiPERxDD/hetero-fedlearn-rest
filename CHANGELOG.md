@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-04-03 20:52:00 IST
+- Added browser-level DFS-lite dashboard verification with a live Chromium flow that starts background training, validates worker telemetry, checks disk-backed block persistence, and exercises the mobile responsive layout. Files: `tests/test_dashboard_ui.py`, `CHANGELOG.md`
+- Added onboarding-script verification covering Bash syntax plus Windows launcher and PowerShell contract checks for Docker availability, storage mounting, firewall setup, and health probing. Files: `tests/test_onboarding_scripts.py`, `CHANGELOG.md`
+
 ## 2026-04-03 20:10:40 IST
 - Hardened the verification suite with stricter negative-path coverage, including baseline weight-dimension rejection, DFS-lite disk-read validation, replica failover, and idempotent dashboard start control checks. Files: `tests/test_federated_workflow.py`, `tests/test_dfs_lite_workflow.py`, `CHANGELOG.md`
 
