@@ -1,6 +1,13 @@
-# hetero-fedlearn-rest
+# Hetero FedLearn REST
 
-Distributed iterative federated learning over HTTP for a heterogeneous cluster with one master node and multiple worker nodes. The repository contains both the preserved v1 baseline and the v1.1 DFS-lite extension, which adds disk-backed block storage, asynchronous dashboards, a browser-driven control plane, and Python-first bootstrap scripts.
+[![Tests](https://img.shields.io/badge/tests-23%20passed-1f6feb)](./README.md#-verification)
+[![Runtime](https://img.shields.io/badge/runtime-baseline%20%2B%20DFS--lite-0a7f6f)](./README.md#-operating-modes)
+[![Launchers](https://img.shields.io/badge/launchers-python--first-c26a14)](./README.md#-preferred-entry-points)
+[![Workers](https://img.shields.io/badge/workers-http%20%2B%20docker-5b6b73)](./README.md#-deployment-paths)
+
+Federated learning over HTTP for heterogeneous clusters, with a preserved baseline runtime and a DFS-lite extension for disk-backed locality, live dashboards, browser-driven control, and cross-platform Python launchers.
+
+The repository is structured as an engineering runtime first, not a demo shell: the baseline path remains intact, the DFS-lite path is implemented as a separate extension, and the documented operator flows map directly to the code that is currently tested.
 
 ## ◇ Snapshot
 

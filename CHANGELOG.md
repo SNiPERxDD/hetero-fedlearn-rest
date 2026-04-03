@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-04-04 01:20:57 IST
+- Reworked the top of the README with a cleaner project title, restrained status badges, and a tighter opening summary so the repository reads less like a raw folder name and more like an operator-facing project entry point without changing any technical claims. Files: `README.md`, `CHANGELOG.md`
+
 ## 2026-04-04 00:48:14 IST
 - Expanded `.gitignore` to cover broader Python cache artifacts, virtual environments, logs, local archives, editor metadata, notebook checkpoints, Node build outputs, and repo-managed runtime storage so tracked source stays clean while local launcher or build noise remains untracked. Files: `.gitignore`, `CHANGELOG.md`
 
