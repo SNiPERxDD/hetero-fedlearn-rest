@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-04-04 00:36:43 IST
+- Moved the PRD source files out of the repo root into `archive/` and updated the README repository layout so the archive location is reflected in the operator-facing documentation. Files: `archive/PRD.md`, `archive/PRD_Extended.md`, `README.md`, `CHANGELOG.md`
+
 ## 2026-04-04 00:05:54 IST
 - Added `stop_all.py`, a repo-scoped Python cleanup utility that terminates the managed DFS-lite master or native workers on known ports and removes the known worker containers so demo ports can be reclaimed quickly. Files: `stop_all.py`, `CHANGELOG.md`
 - Added stop-script coverage and updated the operator docs or website copy to document the cleanup entry point and reflect the expanded `23 passed` suite state. Files: `tests/test_onboarding_scripts.py`, `tests/test_website_assets.py`, `README.md`, `PRD.md`, `PRD_Extended.md`, `website/src/App.tsx`, `CHANGELOG.md`

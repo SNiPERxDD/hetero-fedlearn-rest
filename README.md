@@ -30,8 +30,9 @@ Distributed iterative federated learning over HTTP for a heterogeneous cluster w
 .
 ├── README.md
 ├── CHANGELOG.md
-├── PRD.md
-├── PRD_Extended.md
+├── archive/
+│   ├── PRD.md
+│   └── PRD_Extended.md
 ├── config.json
 ├── config_extended.json
 ├── start_master.py
