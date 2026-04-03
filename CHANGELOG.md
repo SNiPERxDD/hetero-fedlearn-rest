@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-04-03 23:38:25 IST
+- Clarified the operator documentation so the README and PRDs explicitly distinguish the separate React website on port `4173` from the real DFS-lite Flask control plane on port `18080`, and corrected the remaining extended-PRD references that still mentioned `8080`. Files: `README.md`, `PRD.md`, `PRD_Extended.md`, `CHANGELOG.md`
+
 ## 2026-04-03 22:39:08 IST
 - Changed the DFS-lite master dashboard default port from `8080` to `18080` across the bootstrap scripts, manual CLI path, worker UI placeholder, and website or README copy to avoid the verified local Appsmith collision on `8080`. Files: `start_dashboard.py`, `start_master.sh`, `master/master_dfs.py`, `worker/templates/index_dfs.html`, `website/src/App.tsx`, `README.md`, `tests/test_onboarding_scripts.py`, `CHANGELOG.md`
 

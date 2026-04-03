@@ -51,7 +51,7 @@ To eliminate environment issues on demo day, the deployment must be heavily auto
 ### 4.1 Master Onboarding (`macOS / Linux`)
 **Script:** `start_master.sh`
 *   **Checks:** Verifies Python 3.14+ is installed.
-*   **Action:** Creates isolated `venv`, installs `requirements.txt`, binds to `0.0.0.0:8080`, and opens the default web browser automatically.
+*   **Action:** Creates isolated `venv`, installs `requirements.txt`, binds to `0.0.0.0:18080`, and opens the default web browser automatically.
 
 ### 4.2 Worker Onboarding (`Windows`)
 **Script:** `start_worker.bat`
@@ -101,7 +101,7 @@ Worker intercepts payload, writes to `./datanode_storage/blk_90812.csv`.
 
 ### Phase 2: Asynchronous Master Orchestration
 1.  Wrap the `FederatedMaster.run()` logic inside a background thread.
-2.  Expose the Flask UI on port 8080.
+2.  Expose the Flask UI on port 18080.
 3.  Add the JSON state-polling endpoint so the UI updates dynamically.
 
 ### Phase 3: Bootstrap Scripts
@@ -144,5 +144,5 @@ project_root/
 *   **Asynchronous Master:** `master/master_dfs.py` now serves a Flask dashboard on `/`, exposes `/api/status` and `/api/start_training`, runs the training loop inside a daemon thread, and accepts browser-driven worker registration, runtime config changes, and CSV dataset uploads.
 *   **Bootstrap Path:** `start_dashboard.py`, `start_master.sh`, and `start_worker.bat` implement the bootstrap flow required by this extension, including Python version checks, virtual environment setup, Docker daemon checks, stale container cleanup, localhost worker health checks, and Windows host volume mounts.
 *   **Worker Join Flow:** `worker/worker_dfs.py` now lets a worker register itself with the master control plane directly from the worker dashboard.
-*   **Website Layer:** `website/` now provides a clean React front-end package for presenting the architecture, telemetry model, onboarding path, and current validation state without depending on the AI Studio browser scaffold.
+*   **Website Layer:** `website/` now provides a clean React front-end package for presenting the architecture, telemetry model, onboarding path, and current validation state without depending on the AI Studio browser scaffold. It is intentionally separate from the live Flask control plane, which remains served directly by `master/master_dfs.py` and `worker/worker_dfs.py`.
 *   **Validation Status:** The DFS-lite worker persistence tests, control-plane integration tests, asynchronous master tests, and browser dashboard tests pass under `pytest`, and a live local smoke run successfully served the dashboards, persisted block files to disk, and completed 10 rounds to 0.9737 validation accuracy.

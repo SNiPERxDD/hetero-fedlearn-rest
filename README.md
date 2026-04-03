@@ -117,6 +117,12 @@ python3 -m master.master --config config.json --log-level INFO
 
 ## DFS-Lite Extension Demo
 
+Control-plane routing:
+
+- `http://127.0.0.1:4173` is the separate React website in `website/`. It is a project overview and quick-start surface, not the live training control plane.
+- `http://127.0.0.1:18080` is the actual DFS-lite master control panel served by `master/master_dfs.py`.
+- `http://127.0.0.1:5001`, `http://127.0.0.1:5002`, and other worker ports are the actual DFS-lite worker dashboards served by `worker/worker_dfs.py`.
+
 For the fastest local dashboard demo on macOS or Linux, run:
 
 ```bash
@@ -223,6 +229,13 @@ The default [`config_extended.json`](config_extended.json) adds:
 ## React Website
 
 The repository now includes a clean React website package in [`website/`](website) for presenting the architecture, DFS-lite extension, quick-start flows, and current verification state.
+
+Important separation:
+
+- the React site is intentionally separate from the live Flask control plane
+- `npm run dev` in `website/` serves the documentation or marketing layer on `4173` by default
+- the real DFS-lite master operator UI is served by `master/master_dfs.py` on `18080` by default
+- the real worker operator UIs are served by `worker/worker_dfs.py` on their worker ports such as `5001` and `5002`
 
 Run it locally:
 
