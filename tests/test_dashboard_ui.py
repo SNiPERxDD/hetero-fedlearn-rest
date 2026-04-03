@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
+from sklearn.datasets import load_breast_cancer
 from werkzeug.serving import make_server
 
 from master.master_dfs import FederatedMasterDFS, create_app as create_master_app, load_config
@@ -47,9 +48,15 @@ class LocalServer:
         self.thread.join(timeout=5)
 
 
-def write_extended_config(config_path: Path, worker_ports: list[int]) -> None:
+def write_extended_config(
+    config_path: Path,
+    worker_ports: list[int],
+    *,
+    worker_count: int | None = None,
+) -> None:
     """Write a deterministic DFS-lite configuration for UI tests."""
 
+    selected_ports = worker_ports[:worker_count] if worker_count is not None else worker_ports
     config = {
         "dataset": {
             "source": "builtin",
@@ -80,8 +87,8 @@ def write_extended_config(config_path: Path, worker_ports: list[int]) -> None:
             "poll_interval_ms": 250,
         },
         "workers": [
-            {"worker_id": "worker_1", "endpoint": f"http://127.0.0.1:{worker_ports[0]}"},
-            {"worker_id": "worker_2", "endpoint": f"http://127.0.0.1:{worker_ports[1]}"},
+            {"worker_id": f"worker_{index + 1}", "endpoint": f"http://127.0.0.1:{port}"}
+            for index, port in enumerate(selected_ports)
         ],
     }
     config_path.write_text(json.dumps(config), encoding="utf-8")
@@ -177,3 +184,71 @@ def test_dashboard_ui_mobile_layout(
 
     page.get_by_role("button", name="Refresh").click()
     expect(page.locator("#worker-health-body tr")).to_have_count(2)
+
+
+def test_browser_control_plane_workflow(page: Page, tmp_path: Path) -> None:
+    """The browser UI must support worker registration, CSV upload, config edits, and training."""
+
+    worker_ports = [allocate_port(), allocate_port()]
+    worker_storage_dirs = [tmp_path / "worker_1_storage", tmp_path / "worker_2_storage"]
+    master_port = allocate_port()
+
+    worker_servers = [
+        LocalServer(worker_ports[0], create_worker_app(default_worker_id="worker_1", storage_dir=worker_storage_dirs[0])),
+        LocalServer(worker_ports[1], create_worker_app(default_worker_id="worker_2", storage_dir=worker_storage_dirs[1])),
+    ]
+    for server in worker_servers:
+        server.start()
+
+    master_server = None
+    try:
+        config_path = tmp_path / "config_extended.json"
+        write_extended_config(config_path, worker_ports, worker_count=1)
+        service = FederatedMasterDFS(load_config(config_path), upload_dir=tmp_path / "uploads")
+        master_app = create_master_app(config_path=config_path, autostart=False, service=service)
+        master_server = LocalServer(master_port, master_app)
+        master_server.start()
+
+        master_url = f"http://127.0.0.1:{master_port}"
+        worker_2_url = f"http://127.0.0.1:{worker_ports[1]}"
+
+        page.goto(worker_2_url, wait_until="domcontentloaded")
+        page.locator("#master-endpoint").fill(master_url)
+        page.locator("#advertised-endpoint").fill(worker_2_url)
+        page.get_by_role("button", name="Register With Master").click()
+        expect(page.locator("#connection-status")).to_contain_text("Connected", timeout=30000)
+        expect(page.locator("#registration-state")).to_have_text("connected", timeout=30000)
+
+        features, labels = load_breast_cancer(return_X_y=True)
+        dataset_path = tmp_path / "browser_upload.csv"
+        header = ",".join([f"feature_{index}" for index in range(features.shape[1])] + ["label"])
+        rows = [
+            ",".join([*(f"{value:.10f}" for value in row), str(int(label))])
+            for row, label in zip(features, labels, strict=True)
+        ]
+        dataset_path.write_text(f"{header}\n" + "\n".join(rows), encoding="utf-8")
+
+        page.goto(master_url, wait_until="domcontentloaded")
+        expect(page.locator("#worker-config-body tr")).to_have_count(2, timeout=30000)
+        page.locator("#config-rounds").fill("3")
+        page.locator("#config-local-epochs").fill("2")
+        page.get_by_role("button", name="Save Settings").click()
+        expect(page.locator("#action-banner")).to_have_text("Training settings updated.", timeout=30000)
+
+        page.locator("#dataset-file").set_input_files(str(dataset_path))
+        page.get_by_role("button", name="Upload CSV Dataset").click()
+        expect(page.locator("#dataset-summary")).to_contain_text("Dataset source: csv", timeout=30000)
+
+        page.get_by_role("button", name="Start Background Training").click()
+        expect(page.locator("#cluster-state")).to_have_text("Completed", timeout=30000)
+        expect(page.locator("#current-round")).to_have_text("3 / 3", timeout=30000)
+        expect(page.locator("#worker-health-body tr")).to_have_count(2, timeout=30000)
+
+        accuracy_text = page.locator("#validation-accuracy").text_content(timeout=30000)
+        assert accuracy_text is not None
+        assert float(accuracy_text) >= 0.9
+    finally:
+        if master_server is not None:
+            master_server.stop()
+        for server in worker_servers:
+            server.stop()

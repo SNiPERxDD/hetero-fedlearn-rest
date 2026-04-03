@@ -345,7 +345,7 @@ function App() {
           <div className="validation-layout">
             <div className="verification-panel">
               <span className="panel-tag">Verification Summary</span>
-              <strong>18 passed</strong>
+              <strong>19 passed</strong>
               <p>Backend, browser, onboarding, Docker-backed, and smoke-run coverage are all included in the current repository validation path.</p>
               <ul>
                 {validationItems.map((item) => (

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-04-03 21:48:15 IST
+- Added a browser-driven end-to-end control-plane test that registers a worker from the worker UI, uploads a CSV dataset from the master UI, updates training settings, and starts training entirely through the dashboards. Files: `tests/test_dashboard_ui.py`, `CHANGELOG.md`
+- Refreshed the website and README verification copy to reflect the stronger `19 passed` suite state after the new browser control-plane coverage. Files: `website/src/App.tsx`, `tests/test_website_assets.py`, `README.md`, `CHANGELOG.md`
+
 ## 2026-04-03 21:43:02 IST
 - Extended the DFS-lite master into a browser-driven control plane with runtime training config updates, worker registration or removal, CSV dataset upload, and safe mutation guards while training is active. Files: `master/master_dfs.py`, `master/templates/index_dfs.html`, `CHANGELOG.md`
 - Extended the DFS-lite worker dashboard so a worker can register itself with a master endpoint and expose connection state in its runtime telemetry, and added the required HTTP dependency for the worker service. Files: `worker/worker_dfs.py`, `worker/templates/index_dfs.html`, `worker/requirements.txt`, `CHANGELOG.md`
