@@ -235,6 +235,8 @@ The extended Windows bootstrap script builds this image and mounts host storage 
 
 For physical Windows workers, the repository now has a single elevated PowerShell entry point that can cover the real cross-machine path end to end.
 
+Tailscale is optional. It is the cleanest path when you want stable addressing, SSH, and cross-network reachability, but it is not required if the master and workers can already reach each other directly over the same LAN and Windows firewall rules are configured correctly.
+
 Recommended cross-machine sequence:
 
 1. Install Tailscale on both machines.
@@ -246,6 +248,8 @@ Recommended cross-machine sequence:
 7. Verify SSH, worker health, and master registration from the master machine.
 
 Do not rely on the browser admin-account switcher alone. The local Tailscale daemon on each machine must actually be joined to the intended tailnet.
+
+If Tailscale is not needed, omit `-UseTailscale` and `-InstallTailscale`, provide the master LAN address in `-MasterEndpoint`, and set `-AdvertisedEndpoint` explicitly to the Windows worker LAN URL such as `http://192.168.1.25:5000`.
 
 On the master machine, start the master dashboard and then generate or reuse an SSH public key:
 

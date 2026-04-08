@@ -69,3 +69,6 @@ website_generated/
 
 # Frankenreview artifacts
 .frankenreview/
+
+# Local operator notes and future guides
+local_guides/

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-04-08 11:09:42 IST
+- Clarified the Windows onboarding docs so Tailscale is now explicitly documented as optional rather than required, and added the LAN-only variant using `-MasterEndpoint` plus `-AdvertisedEndpoint` without `-UseTailscale`. Files: `README.md`, `CHANGELOG.md`
+- Expanded `.gitignore` to exclude local operator notes or private future guides so machine-specific setup playbooks can stay in the repo root without being tracked. Files: `.gitignore`, `CHANGELOG.md`
+
 ## 2026-04-08 10:55:58 IST
 - Replaced the brittle native-worker `schtasks` command construction with PowerShell scheduled-task APIs so the Windows onboarding flow now registers and starts the persistent worker task reliably under the current administrator identity. Files: `scripts/windows/onboard_worker.ps1`, `tests/test_onboarding_scripts.py`, `CHANGELOG.md`
 - Expanded the README onboarding section into a full cross-machine Tailscale, SSH, master-start, Windows-admin command, and verification sequence, and validated the path by onboarding a fresh Windows worker on port `5005`, registering it to the master, and completing a real DFS-lite training run with persisted block output. Files: `README.md`, `CHANGELOG.md`
