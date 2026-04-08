@@ -54,7 +54,7 @@ The repository is structured as an engineering runtime first, not a demo shell: 
 - `config_extended.json` defines the DFS-lite dashboard poll rate, block replication factor, and the extended worker topology.
 - `worker/Dockerfile` packages the baseline worker on `python:3.14-slim` with Flask, Waitress, scikit-learn, and a native Docker health check.
 - `worker/Dockerfile_extended` packages the DFS-lite worker with templates and a persistent datanode storage directory.
-- `scripts/windows/onboard_worker.ps1` automates Windows worker setup for firewall rules, optional network profile hardening, image build or pull, container launch, and health verification.
+- `scripts/windows/onboard_worker.ps1` automates Windows worker setup for Tailscale installation or login, OpenSSH Server and key placement, firewall hardening, native or Docker worker launch, and optional master registration.
 - `start_master.py` provides the preferred cross-platform DFS-lite master bootstrap.
 - `start_worker.py` provides the preferred cross-platform DFS-lite worker bootstrap in either native Python or Docker mode.
 - `stop_all.py` provides a repo-scoped cleanup utility that stops the managed master, native workers, and known worker containers so ports can be reclaimed quickly.
@@ -233,28 +233,114 @@ The extended Windows bootstrap script builds this image and mounts host storage 
 
 ### ◎ Windows Worker Onboarding
 
-On each Windows worker host, open an elevated PowerShell session and run:
+For physical Windows workers, the repository now has a single elevated PowerShell entry point that can cover the real cross-machine path end to end.
+
+Recommended cross-machine sequence:
+
+1. Install Tailscale on both machines.
+2. Put both machines in the same Tailscale tailnet.
+3. If the devices start on different Tailscale users, invite the second user from the tailnet owner account in the Tailscale admin console under `Users`, accept the invite, and confirm both devices are visible from the same tailnet with `tailscale status`.
+4. Start the DFS-lite master on the control-plane machine.
+5. Generate or reuse the master-side SSH public key.
+6. Run the single elevated PowerShell onboarding command on the Windows worker host.
+7. Verify SSH, worker health, and master registration from the master machine.
+
+Do not rely on the browser admin-account switcher alone. The local Tailscale daemon on each machine must actually be joined to the intended tailnet.
+
+On the master machine, start the master dashboard and then generate or reuse an SSH public key:
+
+```bash
+python3 start_master.py --allow-unsupported-python --config config_extended.json --host 0.0.0.0 --port 18080 --no-auto-start
+```
+
+Use the master address that the worker can reach, such as the Tailscale IP shown by `tailscale status`.
+
+On the same master machine, generate or reuse an SSH public key:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ''
+cat ~/.ssh/id_ed25519.pub
+```
+
+On the Windows worker host, open an elevated PowerShell session in the repository root and run one command:
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -File .\scripts\windows\onboard_worker.ps1 `
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\onboard_worker.ps1 `
+  -WorkerMode Native `
+  -RepoRoot (Get-Location).Path `
+  -UseTailscale `
+  -InstallTailscale `
+  -EnsureSsh `
+  -AuthorizedPublicKey "ssh-ed25519 AAAA... operator@host" `
+  -SetActiveNetworkPrivate `
+  -MasterEndpoint http://100.x.y.z:18080 `
+  -WorkerId win_worker_1 `
+  -HostPort 5000 `
+  -AllowUnsupportedPython
+```
+
+This command is safe to rerun. What the PowerShell script now does:
+
+- installs Tailscale if it is missing, then waits for tailnet login
+- enables OpenSSH Server and makes sure `sshd` starts automatically
+- places the supplied SSH key into the correct Windows authorized-keys file, including `administrators_authorized_keys` when the current user is an administrator
+- creates or refreshes inbound firewall rules for both SSH and the worker port
+- optionally switches connected networks to `Private`
+- launches the worker in either native Python or Docker mode
+- registers a persistent elevated scheduled task for the native worker path so the process survives the onboarding shell exit
+- waits for `/health` to report `status=ok`
+- optionally registers the worker with the master by posting to the local worker API
+
+For the Docker worker path, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\onboard_worker.ps1 `
+  -WorkerMode Docker `
   -BuildContext .\worker `
-  -Image hetero-fedlearn-worker:test `
+  -BuildDockerfile .\worker\Dockerfile_extended `
+  -Image hetero-fedlearn-worker-dfs:test `
   -ContainerName hetero-fedlearn-worker-1 `
   -WorkerId worker_1 `
   -HostPort 5000 `
   -SetActiveNetworkPrivate
 ```
 
-What the PowerShell script does:
+After onboarding, verify the control path from the master machine:
 
-- verifies Docker availability
-- creates or refreshes the inbound firewall rule for the worker port
-- optionally switches connected networks to `Private`
-- optionally builds or pulls the worker image
-- starts the worker container with `--restart unless-stopped`
-- waits for `/health` to report `status=ok`
+```bash
+ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes omen@100.x.y.z "whoami && hostname"
+```
 
-After onboarding, update the `workers` section in [`config.json`](config.json) or [`config_extended.json`](config_extended.json) to use the Windows machines' IPv4 addresses.
+```bash
+ssh omen@100.x.y.z
+```
+
+```bash
+curl http://100.x.y.z:5000/health
+```
+
+```bash
+curl http://127.0.0.1:18080/api/status
+```
+
+If `-MasterEndpoint` was supplied, the worker should already appear in the master dashboard without a manual registration step.
+
+The validated native Windows path now covers:
+
+- Tailscale reachability on the worker host
+- OpenSSH Server plus administrator key placement
+- firewall updates for SSH and worker traffic
+- native DFS-lite worker startup through `start_worker.py`
+- master registration over HTTP
+- real training completion with block persistence on the Windows filesystem
+
+To inspect or stop the native worker later on the Windows host:
+
+```powershell
+Get-ScheduledTask -TaskName HeteroFedLearnWorker-5000 | Format-List TaskName,State
+Stop-ScheduledTask -TaskName HeteroFedLearnWorker-5000
+Unregister-ScheduledTask -TaskName HeteroFedLearnWorker-5000 -Confirm:$false
+```
 
 ### ◎ Preferred Worker Bootstrap
 

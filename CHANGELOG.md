@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-04-08 10:55:58 IST
+- Replaced the brittle native-worker `schtasks` command construction with PowerShell scheduled-task APIs so the Windows onboarding flow now registers and starts the persistent worker task reliably under the current administrator identity. Files: `scripts/windows/onboard_worker.ps1`, `tests/test_onboarding_scripts.py`, `CHANGELOG.md`
+- Expanded the README onboarding section into a full cross-machine Tailscale, SSH, master-start, Windows-admin command, and verification sequence, and validated the path by onboarding a fresh Windows worker on port `5005`, registering it to the master, and completing a real DFS-lite training run with persisted block output. Files: `README.md`, `CHANGELOG.md`
+
+## 2026-04-08 10:30:24 IST
+- Reworked the Windows onboarding path into a single elevated PowerShell script that can install or attach Tailscale, enable OpenSSH Server, place an SSH public key in the correct Windows authorized-keys target, launch a native or Docker worker, and optionally register the worker with the master. Files: `scripts/windows/onboard_worker.ps1`, `CHANGELOG.md`
+- Updated the README and onboarding test coverage to document and verify the cross-machine Tailscale plus SSH workflow, including same-tailnet guidance, SSH key generation, Windows admin commands, and the native worker registration path. Files: `README.md`, `tests/test_onboarding_scripts.py`, `CHANGELOG.md`
+
 ## 2026-04-04 01:20:57 IST
 - Reworked the top of the README with a cleaner project title, restrained status badges, and a tighter opening summary so the repository reads less like a raw folder name and more like an operator-facing project entry point without changing any technical claims. Files: `README.md`, `CHANGELOG.md`
 
