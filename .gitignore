@@ -36,6 +36,8 @@ storage/
 *.err
 *.pid
 *.pid.lock
+output/
+.playwright-cli/
 
 # Archives and downloaded local artifacts
 *.zip
