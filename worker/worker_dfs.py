@@ -385,6 +385,11 @@ class WorkerDFSState:
     advertised_endpoint: str | None = None
     last_registration_status: str | None = None
     last_registration_error: str | None = None
+    master_observed_reachable: bool | None = None
+    master_observed_endpoint: str | None = None
+    master_observed_error: str | None = None
+    master_observed_checked_at: float | None = None
+    master_observation_ttl_seconds: float = 3.0
     lan_ip: str = "127.0.0.1"
     service_port: int = 5000
     udp_discovery_port: int = DEFAULT_UDP_DISCOVERY_PORT
@@ -417,6 +422,57 @@ class WorkerDFSState:
             self.ensure_storage_dir()
             for block_path in self.storage_dir.glob("*.csv"):
                 block_path.unlink(missing_ok=True)
+
+    def refresh_master_observation(self, *, force: bool = False) -> None:
+        """Refresh cached master-side reachability for this worker."""
+
+        with self.lock:
+            current_master_endpoint = self.master_endpoint
+            current_registration_status = self.last_registration_status
+            current_worker_id = self.worker_id
+            checked_at = self.master_observed_checked_at
+            ttl_seconds = float(self.master_observation_ttl_seconds)
+
+        if not current_master_endpoint or current_registration_status != "connected":
+            with self.lock:
+                self.master_observed_reachable = None
+                self.master_observed_endpoint = None
+                self.master_observed_error = None
+                self.master_observed_checked_at = time.time()
+            return
+
+        if not force and checked_at is not None and (time.time() - checked_at) < ttl_seconds:
+            return
+
+        try:
+            response = requests.get(
+                f"{current_master_endpoint}/api/workers/{current_worker_id}/observation",
+                timeout=3.0,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            worker_health = payload.get("observed")
+            configured_worker = payload.get("configured")
+            if worker_health is None:
+                observed_reachable = None
+                observed_endpoint = (
+                    str((configured_worker or {}).get("endpoint", "")).strip() or None
+                )
+                observed_error = None
+            else:
+                observed_reachable = bool(worker_health.get("healthy", False))
+                observed_endpoint = str(worker_health.get("endpoint", "")).strip() or None
+                observed_error = None if observed_reachable else "Master currently marks this worker as offline."
+        except (requests.RequestException, ValueError) as error:
+            observed_reachable = None
+            observed_endpoint = None
+            observed_error = f"Worker could not verify master-side reachability: {error}"
+
+        with self.lock:
+            self.master_observed_reachable = observed_reachable
+            self.master_observed_endpoint = observed_endpoint
+            self.master_observed_error = observed_error
+            self.master_observed_checked_at = time.time()
 
     def initialise_block(
         self,
@@ -546,9 +602,11 @@ class WorkerDFSState:
                 "local_loss": local_loss,
             }
 
-    def status_payload(self) -> dict[str, Any]:
+    def status_payload(self, *, include_master_observation: bool = False) -> dict[str, Any]:
         """Return a JSON-safe telemetry payload for the worker dashboard."""
 
+        if include_master_observation:
+            self.refresh_master_observation()
         with self.lock:
             self.ensure_storage_dir()
             disk_inventory = []
@@ -582,6 +640,9 @@ class WorkerDFSState:
                 "advertised_endpoint": self.advertised_endpoint,
                 "last_registration_status": self.last_registration_status,
                 "last_registration_error": self.last_registration_error,
+                "master_observed_reachable": self.master_observed_reachable,
+                "master_observed_endpoint": self.master_observed_endpoint,
+                "master_observed_error": self.master_observed_error,
                 "lan_ip": self.lan_ip,
                 "service_port": self.service_port,
                 "lan_endpoint": worker_lan_endpoint(self.lan_ip, self.service_port),
@@ -774,7 +835,8 @@ def create_app(
     def api_status() -> tuple[Any, int]:
         """Return the worker telemetry payload."""
 
-        return jsonify(state.status_payload()), 200
+        include_master_observation = request.args.get("include_master_observation", "0") == "1"
+        return jsonify(state.status_payload(include_master_observation=include_master_observation)), 200
 
     @app.post("/initialize")
     def initialize() -> tuple[Any, int]:
@@ -850,7 +912,12 @@ def create_app(
             status_code = 409 if isinstance(error, RuntimeError) else 400
             return jsonify({"error": str(error), "state": state.status_payload()}), status_code
 
-        return jsonify({"connection": response_payload, "state": state.status_payload()}), 200
+        return jsonify(
+            {
+                "connection": response_payload,
+                "state": state.status_payload(include_master_observation=True),
+            }
+        ), 200
 
     return app
 

@@ -754,7 +754,6 @@ class FederatedMasterDFS:
             self.config["workers"] = next_workers
             self.workers = validated_workers
             self.worker_map = {worker.worker_id: worker for worker in self.workers}
-            self.refresh_worker_health()
             return {
                 "worker_id": resolved_worker_id,
                 "endpoint": resolved_endpoint,
@@ -1408,6 +1407,35 @@ def create_app(
             status_code = 409 if isinstance(error, RuntimeError) else 400
             return jsonify({"error": str(error)}), status_code
         return jsonify(response_payload), 200
+
+    @app.get("/api/workers/<worker_id>/observation")
+    def worker_observation(worker_id: str) -> Any:
+        """Return the master's cached observation for a single worker without polling workers."""
+
+        snapshot = runtime_service.state.snapshot()
+        observed_worker = next(
+            (
+                worker
+                for worker in snapshot.get("worker_health", [])
+                if str(worker.get("worker_id", "")).strip() == worker_id
+            ),
+            None,
+        )
+        configured_worker = next(
+            (
+                worker
+                for worker in runtime_service.runtime_config_snapshot().get("workers", [])
+                if str(worker.get("worker_id", "")).strip() == worker_id
+            ),
+            None,
+        )
+        return jsonify(
+            {
+                "worker_id": worker_id,
+                "observed": observed_worker,
+                "configured": configured_worker,
+            }
+        ), 200
 
     @app.post("/api/workers/remove")
     def remove_worker() -> Any:

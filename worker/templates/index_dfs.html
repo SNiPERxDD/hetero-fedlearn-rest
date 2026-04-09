@@ -440,6 +440,21 @@
 
     function syncConnectionBanner(state) {
       if (state.last_registration_status === "connected" && state.master_endpoint) {
+        if (state.master_observed_reachable === false) {
+          const observedEndpoint = state.master_observed_endpoint || state.advertised_endpoint || "n/a";
+          setConnectionBanner(
+            `Registered with ${state.master_endpoint}, but the master currently marks this worker offline at ${observedEndpoint}.`,
+            true,
+          );
+          return;
+        }
+        if (state.master_observed_reachable === null && state.master_observed_error) {
+          setConnectionBanner(
+            `Registered with ${state.master_endpoint}, but reachability could not be verified. ${state.master_observed_error}`,
+            true,
+          );
+          return;
+        }
         setConnectionBanner(`Connected to ${state.master_endpoint} and registered as ${state.worker_id}.`);
         return;
       }
@@ -464,7 +479,8 @@
       document.getElementById("current-advertised-endpoint").textContent = state.advertised_endpoint || "n/a";
       document.getElementById("current-lan-endpoint").textContent = state.lan_endpoint || "n/a";
       document.getElementById("registration-state").textContent = state.last_registration_status || "idle";
-      document.getElementById("registration-error").textContent = state.last_registration_error || "n/a";
+      document.getElementById("registration-error").textContent =
+        state.master_observed_error || state.last_registration_error || "n/a";
       document.getElementById("beacon-state").textContent = state.udp_beacon_enabled
         ? `enabled (UDP ${state.udp_discovery_port})`
         : "disabled";
@@ -511,7 +527,7 @@
     }
 
     async function fetchStatus() {
-      const state = await fetchJson("/api/status");
+      const state = await fetchJson("/api/status?include_master_observation=1");
       renderState(state);
     }
 

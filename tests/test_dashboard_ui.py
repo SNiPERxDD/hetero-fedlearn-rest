@@ -339,6 +339,46 @@ def test_worker_dashboard_auto_registration_state_updates_banner(page: Page, tmp
         master_server.stop()
 
 
+def test_worker_dashboard_shows_master_offline_observation(page: Page, tmp_path: Path) -> None:
+    """The worker dashboard should not claim connectivity when the master marks it offline."""
+
+    worker_port = allocate_port()
+    worker_storage_dir = tmp_path / "worker_storage"
+    worker_app = create_worker_app(
+        default_worker_id="worker_offline_view",
+        storage_dir=worker_storage_dir,
+        bound_host="127.0.0.1",
+        bound_port=worker_port,
+        enable_udp_beacon=False,
+        enable_master_discovery=False,
+    )
+    worker_state = worker_app.config["WORKER_STATE"]
+    worker_state.master_endpoint = "http://127.0.0.1:18080"
+    worker_state.advertised_endpoint = "http://10.136.149.171:5000"
+    worker_state.last_registration_status = "connected"
+    worker_state.master_observed_reachable = False
+    worker_state.master_observed_endpoint = "http://10.136.149.171:5000"
+    worker_state.master_observed_error = "Master currently marks this worker as offline."
+    worker_state.master_observed_checked_at = time.time()
+
+    worker_server = LocalServer(worker_port, worker_app)
+    worker_server.start()
+
+    try:
+        worker_url = f"http://127.0.0.1:{worker_port}"
+        page.goto(worker_url, wait_until="domcontentloaded")
+        expect(page.locator("#connection-status")).to_contain_text(
+            "master currently marks this worker offline",
+            timeout=30000,
+        )
+        expect(page.locator("#registration-error")).to_have_text(
+            "Master currently marks this worker as offline.",
+            timeout=30000,
+        )
+    finally:
+        worker_server.stop()
+
+
 def test_master_dashboard_exposes_digits_builtin_dataset(page: Page, tmp_path: Path) -> None:
     """The master dashboard should surface the larger builtin digits dataset option."""
 

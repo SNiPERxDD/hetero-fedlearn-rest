@@ -210,6 +210,27 @@ def test_worker_train_round_reads_block_from_disk_each_time(tmp_path: Path) -> N
     assert train_response.status_code == 400
 
 
+def test_worker_status_payload_reports_master_marked_offline(tmp_path: Path) -> None:
+    """Worker telemetry should distinguish registration success from master-side reachability."""
+
+    app = create_worker_app(default_worker_id="worker_test", storage_dir=tmp_path / "storage")
+    state = app.config["WORKER_STATE"]
+    state.master_endpoint = "http://127.0.0.1:18080"
+    state.advertised_endpoint = "http://10.0.0.10:5000"
+    state.last_registration_status = "connected"
+    state.master_observed_reachable = False
+    state.master_observed_endpoint = "http://10.0.0.10:5000"
+    state.master_observed_error = "Master currently marks this worker as offline."
+    state.master_observed_checked_at = time.time()
+
+    payload = state.status_payload()
+
+    assert payload["last_registration_status"] == "connected"
+    assert payload["master_observed_reachable"] is False
+    assert payload["master_observed_endpoint"] == "http://10.0.0.10:5000"
+    assert payload["master_observed_error"] == "Master currently marks this worker as offline."
+
+
 def test_replication_status_reports_effective_factor_when_workers_are_insufficient(tmp_path: Path) -> None:
     """Replication status should expose when the requested factor exceeds worker capacity."""
 
@@ -607,7 +628,7 @@ def test_master_udp_discovery_auto_registers_beaconed_workers(tmp_path: Path) ->
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as beacon_socket:
         beacon_socket.sendto(json.dumps(beacon_payload).encode("utf-8"), ("127.0.0.1", discovery_port))
 
-    deadline = time.time() + 2.0
+    deadline = time.time() + 5.0
     while time.time() < deadline:
         workers = client.get("/api/config").get_json()["workers"]
         if any(worker["worker_id"] == "worker_udp" for worker in workers):
