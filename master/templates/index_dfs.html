@@ -416,7 +416,7 @@
 
       <div class="panel">
         <h2>Dataset Control</h2>
-        <p class="panel-copy">Switch between the builtin breast cancer dataset and a user-supplied CSV dataset.</p>
+        <p class="panel-copy">Switch between builtin datasets or a user-supplied CSV dataset.</p>
         <div class="form-grid">
           <div class="field">
             <label for="dataset-source">Dataset Source</label>
@@ -427,7 +427,10 @@
           </div>
           <div class="field">
             <label for="dataset-name">Dataset Name</label>
-            <input id="dataset-name" type="text" value="breast_cancer">
+            <select id="dataset-name">
+              <option value="breast_cancer">breast_cancer</option>
+              <option value="digits">digits</option>
+            </select>
           </div>
           <div class="field">
             <label for="dataset-label-column">Label Column</label>
@@ -783,20 +786,21 @@
 
     async function useBuiltinDataset() {
       try {
+        const selectedDataset = document.getElementById("dataset-name").value || "breast_cancer";
         const payload = await fetchJson("/api/config", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             dataset: {
               source: "builtin",
-              name: "breast_cancer",
+              name: selectedDataset,
               validation_fraction: Number(document.getElementById("config-validation-fraction").value),
               label_column: Number(document.getElementById("dataset-label-column").value),
             },
           }),
         });
         renderConfig(payload.config);
-        setBanner("Builtin dataset selected.");
+        setBanner(`Builtin dataset selected: ${selectedDataset}.`);
       } catch (error) {
         setBanner(error.message, true);
       }

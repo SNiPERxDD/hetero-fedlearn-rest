@@ -333,3 +333,26 @@ def test_worker_dashboard_auto_registration_state_updates_banner(page: Page, tmp
     finally:
         worker_server.stop()
         master_server.stop()
+
+
+def test_master_dashboard_exposes_digits_builtin_dataset(page: Page, tmp_path: Path) -> None:
+    """The master dashboard should surface the larger builtin digits dataset option."""
+
+    worker_ports = [allocate_port(), allocate_port()]
+    config_path = tmp_path / "config_extended.json"
+    write_extended_config(config_path, worker_ports, worker_count=0)
+    service = FederatedMasterDFS(load_config(config_path), upload_dir=tmp_path / "uploads")
+    master_port = allocate_port()
+    master_server = LocalServer(master_port, create_master_app(config_path=config_path, autostart=False, service=service))
+    master_server.start()
+
+    try:
+        master_url = f"http://127.0.0.1:{master_port}"
+        page.goto(master_url, wait_until="domcontentloaded")
+        page.locator("#dataset-source").select_option("builtin")
+        page.locator("#dataset-name").select_option("digits")
+        page.get_by_role("button", name="Use Builtin Dataset").click()
+        expect(page.locator("#dataset-summary")).to_contain_text("digits", timeout=30000)
+        expect(page.locator("#action-banner")).to_contain_text("Builtin dataset selected: digits.", timeout=30000)
+    finally:
+        master_server.stop()
