@@ -6,6 +6,8 @@ import argparse
 import copy
 import json
 import logging
+import os
+import socket
 import threading
 import time
 import uuid
@@ -24,6 +26,75 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 LOGGER = logging.getLogger(__name__)
+
+DEFAULT_UDP_DISCOVERY_PORT = 54321
+
+
+def get_lan_ip() -> str:
+    """Return the best-effort LAN IPv4 address for this host."""
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe_socket:
+        try:
+            probe_socket.connect(("8.8.8.8", 80))
+            return str(probe_socket.getsockname()[0])
+        except OSError:
+            return "127.0.0.1"
+
+
+def udp_discovery_listener(runtime_service: "FederatedMasterDFS", discovery_port: int) -> None:
+    """Listen for worker UDP beacons and auto-register discovered endpoints."""
+
+    known_endpoints: dict[str, str] = {}
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as listener_socket:
+        listener_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        reuse_port = getattr(socket, "SO_REUSEPORT", None)
+        if reuse_port is not None:
+            try:
+                listener_socket.setsockopt(socket.SOL_SOCKET, reuse_port, 1)
+            except OSError:
+                LOGGER.debug("SO_REUSEPORT is unavailable for UDP discovery listener.")
+
+        try:
+            listener_socket.bind(("0.0.0.0", discovery_port))
+        except OSError as error:
+            LOGGER.warning(
+                "UDP discovery listener could not bind to port %s: %s",
+                discovery_port,
+                error,
+            )
+            return
+
+        listener_socket.settimeout(1.0)
+        LOGGER.info("UDP worker discovery listener active on 0.0.0.0:%s", discovery_port)
+        while True:
+            try:
+                beacon_bytes, _sender = listener_socket.recvfrom(2048)
+            except TimeoutError:
+                continue
+            except OSError as error:
+                LOGGER.warning("UDP discovery listener stopped: %s", error)
+                return
+
+            try:
+                beacon_payload = json.loads(beacon_bytes.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
+
+            worker_id = str(beacon_payload.get("worker_id", "")).strip()
+            endpoint = str(beacon_payload.get("endpoint", "")).strip().rstrip("/")
+            if not worker_id or not endpoint:
+                continue
+            if not endpoint.startswith(("http://", "https://")):
+                continue
+            if known_endpoints.get(worker_id) == endpoint:
+                continue
+
+            try:
+                runtime_service.register_worker(worker_id=worker_id, endpoint=endpoint)
+                known_endpoints[worker_id] = endpoint
+                LOGGER.info("Discovered worker %s at %s via UDP beacon.", worker_id, endpoint)
+            except (RuntimeError, ValueError) as error:
+                LOGGER.debug("Worker beacon ignored for %s (%s)", worker_id, error)
 
 
 @dataclass(frozen=True)
@@ -341,8 +412,6 @@ class FederatedMasterDFS:
         self.upload_dir = Path(upload_dir or (Path(__file__).resolve().parent / "uploads"))
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.workers = self._normalise_workers(config.get("workers", []))
-        if not self.workers:
-            raise ValueError("Configuration must define at least one worker.")
 
         self.worker_map = {worker.worker_id: worker for worker in self.workers}
         self.random_seed = int(self.training_config.get("random_seed", 42))
@@ -381,8 +450,6 @@ class FederatedMasterDFS:
             seen_endpoints.add(endpoint)
             normalised_workers.append(WorkerSpec(worker_id=worker_id, endpoint=endpoint))
 
-        if not normalised_workers:
-            raise ValueError("At least one worker must be configured.")
         return normalised_workers
 
     def _sync_worker_runtime(self) -> None:
@@ -467,6 +534,13 @@ class FederatedMasterDFS:
                 if timeout_seconds <= 0:
                     raise ValueError("network.timeout_seconds must be positive.")
                 self.network_config["timeout_seconds"] = timeout_seconds
+            if "discovery_port" in network_payload:
+                discovery_port = int(network_payload["discovery_port"])
+                if not 1 <= discovery_port <= 65535:
+                    raise ValueError("network.discovery_port must be between 1 and 65535.")
+                self.network_config["discovery_port"] = discovery_port
+            if "enable_udp_discovery" in network_payload:
+                self.network_config["enable_udp_discovery"] = bool(network_payload["enable_udp_discovery"])
 
             self.config["dataset"] = self.dataset_config
             self.config["training"] = self.training_config
@@ -476,17 +550,24 @@ class FederatedMasterDFS:
     def register_worker(self, worker_id: str, endpoint: str) -> dict[str, Any]:
         """Register or update a worker endpoint in the runtime configuration."""
 
+        resolved_worker_id = worker_id.strip()
+        resolved_endpoint = endpoint.strip().rstrip("/")
+        if not resolved_worker_id:
+            raise ValueError("worker_id must be non-empty.")
+        if not resolved_endpoint:
+            raise ValueError("endpoint must be non-empty.")
+
         with self.config_lock:
             self.ensure_mutable()
             next_workers = self.runtime_config_snapshot()["workers"]
             worker_registered = False
             for worker in next_workers:
-                if worker["worker_id"] == worker_id:
-                    worker["endpoint"] = endpoint
+                if worker["worker_id"] == resolved_worker_id:
+                    worker["endpoint"] = resolved_endpoint
                     worker_registered = True
                     break
             if not worker_registered:
-                next_workers.append({"worker_id": worker_id, "endpoint": endpoint})
+                next_workers.append({"worker_id": resolved_worker_id, "endpoint": resolved_endpoint})
 
             validated_workers = self._normalise_workers(next_workers)
             self.config["workers"] = next_workers
@@ -494,8 +575,8 @@ class FederatedMasterDFS:
             self.worker_map = {worker.worker_id: worker for worker in self.workers}
             self.refresh_worker_health()
             return {
-                "worker_id": worker_id,
-                "endpoint": endpoint,
+                "worker_id": resolved_worker_id,
+                "endpoint": resolved_endpoint,
                 "worker_count": len(self.workers),
                 "config": self.runtime_config_snapshot(),
             }
@@ -586,6 +667,11 @@ class FederatedMasterDFS:
 
     def prepare_blocks(self) -> tuple[list[tuple[BlockAssignment, np.ndarray, np.ndarray]], np.ndarray, np.ndarray]:
         """Split, scale, and convert the training dataset into DFS-like blocks."""
+
+        if not self.workers:
+            raise RuntimeError(
+                "No workers are registered. Start at least one worker and wait for discovery before training."
+            )
 
         features, labels = self.load_dataset()
         validation_fraction = float(self.dataset_config.get("validation_fraction", 0.2))
@@ -958,6 +1044,11 @@ class FederatedMasterDFS:
         with self.training_thread_lock:
             if self.training_thread and self.training_thread.is_alive():
                 return False
+            if not self.workers:
+                self.state.fail(
+                    "No workers are currently registered. Start workers and let UDP discovery register them first."
+                )
+                return False
             self.training_thread = threading.Thread(target=self.run_training, daemon=True)
             self.training_thread.start()
             return True
@@ -975,6 +1066,7 @@ def create_app(
     *,
     autostart: bool = False,
     service: FederatedMasterDFS | None = None,
+    enable_udp_discovery: bool | None = None,
 ) -> Flask:
     """Create and configure the DFS-lite master Flask application."""
 
@@ -985,6 +1077,26 @@ def create_app(
     )
     app.config["MASTER_SERVICE"] = runtime_service
     app.config["CONFIG_PATH"] = str(config_path)
+    app.config["MASTER_LAN_IP"] = get_lan_ip()
+
+    discovery_port = int(runtime_service.network_config.get("discovery_port", DEFAULT_UDP_DISCOVERY_PORT))
+    if enable_udp_discovery is None:
+        discovery_enabled = bool(runtime_service.network_config.get("enable_udp_discovery", True))
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            discovery_enabled = False
+    else:
+        discovery_enabled = bool(enable_udp_discovery)
+
+    app.config["UDP_DISCOVERY_PORT"] = discovery_port
+    app.config["UDP_DISCOVERY_ENABLED"] = discovery_enabled
+    if discovery_enabled:
+        discovery_thread = threading.Thread(
+            target=udp_discovery_listener,
+            kwargs={"runtime_service": runtime_service, "discovery_port": discovery_port},
+            daemon=True,
+            name=f"master-udp-discovery-{discovery_port}",
+        )
+        discovery_thread.start()
 
     if autostart:
         runtime_service.start_training_thread()
@@ -993,11 +1105,18 @@ def create_app(
     def index() -> str:
         """Render the master telemetry dashboard."""
 
+        host_header = request.host
+        resolved_port = host_header.split(":")[-1] if ":" in host_header else "18080"
+
         return render_template(
             "index_dfs.html",
             worker_count=len(runtime_service.workers),
             poll_interval_ms=int(runtime_service.dashboard_config.get("poll_interval_ms", 1500)),
             total_rounds=int(runtime_service.training_config.get("rounds", 10)),
+            master_lan_ip=app.config["MASTER_LAN_IP"],
+            master_port=resolved_port,
+            udp_discovery_port=app.config["UDP_DISCOVERY_PORT"],
+            udp_discovery_enabled=app.config["UDP_DISCOVERY_ENABLED"],
         )
 
     @app.get("/api/status")
@@ -1006,7 +1125,13 @@ def create_app(
         """Return the current cluster state for dashboard polling."""
 
         runtime_service.refresh_worker_health()
-        return jsonify(runtime_service.state.snapshot())
+        status_payload = runtime_service.state.snapshot()
+        status_payload["discovery"] = {
+            "enabled": bool(app.config["UDP_DISCOVERY_ENABLED"]),
+            "port": int(app.config["UDP_DISCOVERY_PORT"]),
+            "master_lan_ip": str(app.config["MASTER_LAN_IP"]),
+        }
+        return jsonify(status_payload)
 
     @app.post("/api/start_training")
     def start_training() -> Any:

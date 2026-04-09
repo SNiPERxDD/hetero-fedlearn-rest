@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
+import socket
 import threading
+import time
 from dataclasses import dataclass, field
+from ipaddress import IPv4Address
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -17,6 +21,73 @@ from sklearn.linear_model import SGDClassifier
 from sklearn.metrics import log_loss
 
 LOGGER = logging.getLogger(__name__)
+
+DEFAULT_UDP_DISCOVERY_PORT = 54321
+
+
+def get_lan_ip() -> str:
+    """Return the best-effort LAN IPv4 address for this host."""
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe_socket:
+        try:
+            probe_socket.connect(("8.8.8.8", 80))
+            return str(probe_socket.getsockname()[0])
+        except OSError:
+            return "127.0.0.1"
+
+
+def worker_lan_endpoint(lan_ip: str, port: int) -> str:
+    """Build the worker's LAN endpoint URL from IP and port."""
+
+    return f"http://{lan_ip}:{port}"
+
+
+def beacon_targets(lan_ip: str, extra_targets: Sequence[str] | None = None) -> tuple[str, ...]:
+    """Return UDP discovery targets for robust LAN and same-host registration."""
+
+    targets: list[str] = ["255.255.255.255"]
+    octets = lan_ip.split(".")
+    if len(octets) == 4 and all(part.isdigit() for part in octets):
+        directed_broadcast = f"{octets[0]}.{octets[1]}.{octets[2]}.255"
+        if directed_broadcast not in targets:
+            targets.append(directed_broadcast)
+
+    if lan_ip and lan_ip not in targets:
+        targets.append(lan_ip)
+
+    for target in extra_targets or []:
+        try:
+            normalised_target = str(IPv4Address(str(target).strip()))
+        except ValueError:
+            continue
+        if normalised_target not in targets:
+            targets.append(normalised_target)
+
+    return tuple(targets)
+
+
+def udp_beacon_thread(state: "WorkerDFSState") -> None:
+    """Broadcast worker endpoint beacons for master auto-discovery."""
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as beacon_socket:
+        beacon_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        while True:
+            with state.lock:
+                payload = {
+                    "worker_id": state.worker_id,
+                    "endpoint": worker_lan_endpoint(state.lan_ip, state.service_port),
+                }
+                discovery_port = int(state.udp_discovery_port)
+                interval_seconds = float(state.beacon_interval_seconds)
+                targets = tuple(state.udp_beacon_targets or beacon_targets(state.lan_ip))
+
+            beacon_bytes = json.dumps(payload).encode("utf-8")
+            for target in targets:
+                try:
+                    beacon_socket.sendto(beacon_bytes, (target, discovery_port))
+                except OSError:
+                    continue
+            time.sleep(interval_seconds)
 
 
 def configure_logging(level: str = "INFO") -> None:
@@ -128,6 +199,12 @@ class WorkerDFSState:
     advertised_endpoint: str | None = None
     last_registration_status: str | None = None
     last_registration_error: str | None = None
+    lan_ip: str = "127.0.0.1"
+    service_port: int = 5000
+    udp_discovery_port: int = DEFAULT_UDP_DISCOVERY_PORT
+    udp_beacon_enabled: bool = False
+    beacon_interval_seconds: float = 3.0
+    udp_beacon_targets: list[str] = field(default_factory=list)
     lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
     def ensure_storage_dir(self) -> None:
@@ -298,6 +375,12 @@ class WorkerDFSState:
                 "advertised_endpoint": self.advertised_endpoint,
                 "last_registration_status": self.last_registration_status,
                 "last_registration_error": self.last_registration_error,
+                "lan_ip": self.lan_ip,
+                "service_port": self.service_port,
+                "lan_endpoint": worker_lan_endpoint(self.lan_ip, self.service_port),
+                "udp_discovery_port": self.udp_discovery_port,
+                "udp_beacon_enabled": self.udp_beacon_enabled,
+                "udp_beacon_targets": list(self.udp_beacon_targets),
             }
 
     def connect_to_master(
@@ -353,25 +436,66 @@ def create_app(
     default_worker_id: str | None = None,
     *,
     storage_dir: str | Path | None = None,
+    bound_host: str = "0.0.0.0",
+    bound_port: int | None = None,
+    enable_udp_beacon: bool | None = None,
+    udp_discovery_port: int | None = None,
 ) -> Flask:
     """Create and configure the DFS-lite worker Flask application."""
 
     app = Flask(__name__, template_folder="templates")
+    resolved_port = int(bound_port or os.environ.get("WORKER_PORT", "5000"))
+    resolved_discovery_port = int(udp_discovery_port or os.environ.get("UDP_DISCOVERY_PORT", DEFAULT_UDP_DISCOVERY_PORT))
+    raw_targets = os.environ.get("UDP_DISCOVERY_TARGETS", "")
+    explicit_targets = [value.strip() for value in raw_targets.split(",") if value.strip()]
+    resolved_lan_ip = get_lan_ip()
+    resolved_targets = list(beacon_targets(resolved_lan_ip, explicit_targets))
+    if enable_udp_beacon is None:
+        beacon_enabled = os.environ.get("ENABLE_UDP_BEACON", "1") != "0"
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            beacon_enabled = False
+    else:
+        beacon_enabled = bool(enable_udp_beacon)
+
     resolved_storage_dir = Path(storage_dir or os.environ.get("DATANODE_STORAGE_DIR") or (
         Path(__file__).resolve().parent / "datanode_storage"
     ))
     state = WorkerDFSState(
         worker_id=default_worker_id or os.environ.get("WORKER_ID", "worker"),
         storage_dir=resolved_storage_dir,
+        lan_ip=resolved_lan_ip,
+        service_port=resolved_port,
+        udp_discovery_port=resolved_discovery_port,
+        udp_beacon_enabled=beacon_enabled,
+        udp_beacon_targets=resolved_targets,
     )
     state.ensure_storage_dir()
     app.config["WORKER_STATE"] = state
+    app.config["WORKER_HOST"] = bound_host
+    app.config["WORKER_PORT"] = resolved_port
+
+    if beacon_enabled:
+        thread = threading.Thread(
+            target=udp_beacon_thread,
+            args=(state,),
+            daemon=True,
+            name=f"worker-udp-beacon-{resolved_port}",
+        )
+        thread.start()
 
     @app.get("/")
     def index() -> str:
         """Render the worker telemetry dashboard."""
 
-        return render_template("index_dfs.html", worker_id=state.worker_id)
+        return render_template(
+            "index_dfs.html",
+            worker_id=state.worker_id,
+            worker_lan_ip=state.lan_ip,
+            worker_port=state.service_port,
+            worker_lan_endpoint=worker_lan_endpoint(state.lan_ip, state.service_port),
+            udp_discovery_port=state.udp_discovery_port,
+            udp_beacon_enabled=state.udp_beacon_enabled,
+        )
 
     @app.get("/health")
     def health() -> tuple[Any, int]:
@@ -457,7 +581,7 @@ def create_app(
         if not master_endpoint:
             return jsonify({"error": "master_endpoint is required."}), 400
         if not advertised_endpoint:
-            advertised_endpoint = request.host_url.rstrip("/")
+            advertised_endpoint = worker_lan_endpoint(state.lan_ip, state.service_port)
 
         try:
             response_payload = state.connect_to_master(
@@ -494,7 +618,13 @@ def main() -> int:
 
     args = build_argument_parser().parse_args()
     configure_logging(args.log_level)
-    app_instance = create_app(default_worker_id=args.worker_id, storage_dir=args.storage_dir)
+    app_instance = create_app(
+        default_worker_id=args.worker_id,
+        storage_dir=args.storage_dir,
+        bound_host=args.host,
+        bound_port=args.port,
+        enable_udp_beacon=True,
+    )
     try:
         from waitress import serve
     except ImportError:
@@ -506,7 +636,7 @@ def main() -> int:
     return 0
 
 
-app = create_app(default_worker_id=os.environ.get("WORKER_ID"))
+app = create_app(default_worker_id=os.environ.get("WORKER_ID"), enable_udp_beacon=False)
 
 
 if __name__ == "__main__":

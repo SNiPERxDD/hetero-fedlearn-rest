@@ -92,6 +92,16 @@
       line-height: 1.6;
     }
 
+    .discovery-note {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(98, 208, 182, 0.14);
+      border: 1px solid var(--border);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
     .stats,
     .form-grid {
       display: grid;
@@ -232,6 +242,14 @@
           This worker stores federated training blocks on local disk, reloads them on each round,
           and can now register itself with the master directly from the browser.
         </p>
+        <div class="discovery-note" id="discovery-note">
+          Worker running at <span class="mono">{{ worker_lan_endpoint }}</span>
+          {% if udp_beacon_enabled %}
+            | Broadcasting presence to Master on UDP <span class="mono">{{ udp_discovery_port }}</span>.
+          {% else %}
+            | UDP broadcasting is disabled for this process.
+          {% endif %}
+        </div>
       </div>
 
       <div class="panel">
@@ -269,7 +287,7 @@
           </div>
           <div class="field span-2">
             <label for="advertised-endpoint">Advertised Worker Endpoint</label>
-            <input id="advertised-endpoint" type="url" placeholder="http://192.168.1.40:5000">
+            <input id="advertised-endpoint" type="url" placeholder="http://192.168.1.40:5000" value="{{ worker_lan_endpoint }}">
           </div>
           <div class="field span-2">
             <button type="submit" id="connect-master">Register With Master</button>
@@ -298,6 +316,14 @@
             <tr>
               <th>Block Count</th>
               <td id="block-count">0</td>
+            </tr>
+            <tr>
+              <th>LAN Endpoint</th>
+              <td class="mono" id="current-lan-endpoint">{{ worker_lan_endpoint }}</td>
+            </tr>
+            <tr>
+              <th>Discovery Beacon</th>
+              <td id="beacon-state">{{ "enabled" if udp_beacon_enabled else "disabled" }}</td>
             </tr>
             <tr>
               <th>Master Endpoint</th>
@@ -387,8 +413,19 @@
       document.getElementById("block-count").textContent = state.block_count;
       document.getElementById("current-master-endpoint").textContent = state.master_endpoint || "n/a";
       document.getElementById("current-advertised-endpoint").textContent = state.advertised_endpoint || "n/a";
+      document.getElementById("current-lan-endpoint").textContent = state.lan_endpoint || "n/a";
       document.getElementById("registration-state").textContent = state.last_registration_status || "idle";
       document.getElementById("registration-error").textContent = state.last_registration_error || "n/a";
+      document.getElementById("beacon-state").textContent = state.udp_beacon_enabled
+        ? `enabled (UDP ${state.udp_discovery_port})`
+        : "disabled";
+
+      const discoveryNote = document.getElementById("discovery-note");
+      if (state.lan_endpoint) {
+        discoveryNote.innerHTML = state.udp_beacon_enabled
+          ? `Worker running at <span class="mono">${state.lan_endpoint}</span> | Broadcasting presence to Master on UDP <span class="mono">${state.udp_discovery_port}</span>.`
+          : `Worker running at <span class="mono">${state.lan_endpoint}</span> | UDP broadcasting is disabled for this process.`;
+      }
 
       if (state.master_endpoint) {
         document.getElementById("master-endpoint").value = state.master_endpoint;
@@ -396,7 +433,7 @@
       if (state.advertised_endpoint) {
         document.getElementById("advertised-endpoint").value = state.advertised_endpoint;
       } else if (!document.getElementById("advertised-endpoint").value) {
-        document.getElementById("advertised-endpoint").value = window.location.origin;
+        document.getElementById("advertised-endpoint").value = state.lan_endpoint || window.location.origin;
       }
 
       const readyPill = document.getElementById("ready-pill");

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-04-09 16:11:47 IST
+- Hardened cross-machine worker discovery by extending beacon targets beyond limited broadcast to include directed subnet broadcast plus optional explicit unicast discovery targets via `UDP_DISCOVERY_TARGETS`, improving visibility across LANs that filter broadcast traffic. Files: `worker/worker_dfs.py`, `README.md`, `CHANGELOG.md`
+- Updated the worker launcher so Python versions below 3.14 are allowed by default unless `ALLOW_UNSUPPORTED_PYTHON=0` is set, and added `--udp-discovery-targets` to pass explicit fallback discovery destinations in native or Docker modes. Files: `start_worker.py`, `CHANGELOG.md`
+
+## 2026-04-09 16:01:46 IST
+- Updated the master bootstrap Python floor behavior so `start_master.py` now defaults to allowing sub-3.14 interpreters for local runs unless `ALLOW_UNSUPPORTED_PYTHON=0` is set, removing the need to pass `--allow-unsupported-python` each time on local Anaconda environments while preserving strict-mode opt-out through environment configuration. Files: `start_master.py`, `CHANGELOG.md`
+
+## 2026-04-09 14:43:46 IST
+- Implemented zero-configuration LAN discovery for DFS-lite by adding UDP worker beacon broadcasting and master-side UDP listener auto-registration, plus LAN endpoint metadata in status payloads so worker routing can use Wi-Fi-facing addresses instead of only loopback defaults; hardened worker beacons to emit to both subnet broadcast and LAN-unicast targets for reliable same-machine discovery behavior. Files: `master/master_dfs.py`, `worker/worker_dfs.py`, `config_extended.json`, `CHANGELOG.md`
+- Updated both dashboards to surface LAN/discovery runtime state directly in the UI, including worker advertised LAN endpoint visibility and master discovery listener status. Files: `master/templates/index_dfs.html`, `worker/templates/index_dfs.html`, `CHANGELOG.md`
+- Streamlined launcher behavior for zero-arg startup by adding worker auto-port selection, hostname-derived worker IDs, and LAN-aware master browser URL resolution while preserving existing compatibility switches. Files: `start_worker.py`, `start_master.py`, `CHANGELOG.md`
+- Expanded verification and operator docs for the new discovery flow with a dedicated UDP auto-registration integration test and updated README quick-start guidance for LAN-first zero-config operation. Files: `tests/test_dfs_lite_workflow.py`, `README.md`, `CHANGELOG.md`
+
 ## 2026-04-08 11:09:42 IST
 - Clarified the Windows onboarding docs so Tailscale is now explicitly documented as optional rather than required, and added the LAN-only variant using `-MasterEndpoint` plus `-AdvertisedEndpoint` without `-UseTailscale`. Files: `README.md`, `CHANGELOG.md`
 - Expanded `.gitignore` to exclude local operator notes or private future guides so machine-specific setup playbooks can stay in the repo root without being tracked. Files: `.gitignore`, `CHANGELOG.md`

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import socket
 import subprocess
 import sys
 import threading
@@ -127,16 +128,30 @@ def maybe_open_browser(url: str, *, disabled: bool) -> None:
     threading.Timer(2.0, open_url).start()
 
 
+def get_lan_ip() -> str:
+    """Return the best-effort LAN IPv4 address for this host."""
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe_socket:
+        try:
+            probe_socket.connect(("8.8.8.8", 80))
+            return str(probe_socket.getsockname()[0])
+        except OSError:
+            return "127.0.0.1"
+
+
 def main() -> int:
     """Create the virtual environment and launch the DFS-lite master process."""
 
     args = parse_args()
     repo_root = Path(__file__).resolve().parent
-    allow_unsupported = args.allow_unsupported_python or os.environ.get("ALLOW_UNSUPPORTED_PYTHON") == "1"
+    allow_unsupported_env = os.environ.get("ALLOW_UNSUPPORTED_PYTHON")
+    allow_unsupported_default = allow_unsupported_env != "0"
+    allow_unsupported = args.allow_unsupported_python or allow_unsupported_default
     ensure_supported_python(allow_unsupported=allow_unsupported)
 
     requirements_path = repo_root / "master" / "requirements_extended.txt"
-    master_url = f"http://127.0.0.1:{args.port}"
+    browser_host = get_lan_ip() if args.host in {"0.0.0.0", "::"} else args.host
+    master_url = f"http://{browser_host}:{args.port}"
     venv_python = ensure_virtualenv(args, requirements_path)
 
     child_env = os.environ.copy()

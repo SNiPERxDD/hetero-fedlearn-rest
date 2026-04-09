@@ -22,7 +22,9 @@
     "timeout_seconds": 120,
     "retry_attempts": 3,
     "retry_backoff_seconds": 1.0,
-    "health_timeout_seconds": 3.0
+    "health_timeout_seconds": 3.0,
+    "enable_udp_discovery": true,
+    "discovery_port": 54321
   },
   "dashboard": {
     "poll_interval_ms": 1500

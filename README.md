@@ -1,9 +1,9 @@
 # Hetero FedLearn REST
 
-[![Tests](https://img.shields.io/badge/tests-23%20passed-1f6feb)](./README.md#-verification)
+[![Tests](https://img.shields.io/badge/tests-25%20passed-1f6feb)](./README.md#-verification)
 [![Runtime](https://img.shields.io/badge/runtime-baseline%20%2B%20DFS--lite-0a7f6f)](./README.md#-operating-modes)
 [![Launchers](https://img.shields.io/badge/launchers-python--first-c26a14)](./README.md#-preferred-entry-points)
-[![Workers](https://img.shields.io/badge/workers-http%20%2B%20docker-5b6b73)](./README.md#-deployment-paths)
+[![Workers](https://img.shields.io/badge/workers-http%20%2B%20zeroconf-5b6b73)](./README.md#-deployment-paths)
 
 Federated learning over HTTP for heterogeneous clusters, with a preserved baseline runtime and a DFS-lite extension for disk-backed locality, live dashboards, browser-driven control, and cross-platform Python launchers.
 
@@ -21,7 +21,7 @@ The repository is structured as an engineering runtime first, not a demo shell: 
 
 ## ◇ Current State
 
-- Verified suite state: `23 passed`
+- Verified suite state: `25 passed`
 - Verified DFS-lite validation accuracy: `0.9737`
 - Preferred master launcher: `start_master.py`
 - Preferred worker launcher: `start_worker.py`
@@ -39,8 +39,8 @@ The repository is structured as an engineering runtime first, not a demo shell: 
 | Task | Command |
 | --- | --- |
 | Start local DFS-lite demo | `python3 start_dashboard.py --allow-unsupported-python` |
-| Start DFS-lite master | `python3 start_master.py --allow-unsupported-python --config config_extended.json --host 127.0.0.1 --port 18080` |
-| Start native DFS-lite worker | `python3 start_worker.py --mode native --allow-unsupported-python --worker-id worker_1 --port 5001 --storage-dir /tmp/hetero-fedlearn-worker-1` |
+| Start DFS-lite master | `python3 start_master.py --allow-unsupported-python` |
+| Start native DFS-lite worker | `python3 start_worker.py --allow-unsupported-python` |
 | Start Docker DFS-lite worker | `python3 start_worker.py --mode docker --worker-id worker_1 --port 5000` |
 | Stop repo-managed services | `python3 stop_all.py` |
 
@@ -49,14 +49,14 @@ The repository is structured as an engineering runtime first, not a demo shell: 
 - `master/master.py` orchestrates dataset preparation, worker initialization, round execution, retry-aware HTTP communication, FedAvg aggregation, and validation.
 - `worker/worker.py` exposes `/health`, `/initialize`, and `/train_round` and keeps local model state across communication rounds.
 - `master/master_dfs.py` upgrades the master into a NameNode-style service with a background training thread, live telemetry APIs, worker registration, dataset upload controls, and a dashboard on `/`.
-- `worker/worker_dfs.py` upgrades the worker into a DataNode-style service that persists blocks to disk, reloads them per round, serves storage or compute telemetry on `/`, and can register itself with the master from its own UI.
+- `worker/worker_dfs.py` upgrades the worker into a DataNode-style service that persists blocks to disk, reloads them per round, serves storage or compute telemetry on `/`, and now broadcasts its LAN endpoint over UDP for zero-config master discovery.
 - `config.json` defines the baseline dataset, model hyperparameters, training schedule, timeouts, retries, and worker endpoints.
-- `config_extended.json` defines the DFS-lite dashboard poll rate, block replication factor, and the extended worker topology.
+- `config_extended.json` defines the DFS-lite dashboard poll rate, block replication factor, and UDP discovery settings used by zero-config worker auto-registration.
 - `worker/Dockerfile` packages the baseline worker on `python:3.14-slim` with Flask, Waitress, scikit-learn, and a native Docker health check.
 - `worker/Dockerfile_extended` packages the DFS-lite worker with templates and a persistent datanode storage directory.
 - `scripts/windows/onboard_worker.ps1` automates Windows worker setup for Tailscale installation or login, OpenSSH Server and key placement, firewall hardening, native or Docker worker launch, and optional master registration.
 - `start_master.py` provides the preferred cross-platform DFS-lite master bootstrap.
-- `start_worker.py` provides the preferred cross-platform DFS-lite worker bootstrap in either native Python or Docker mode.
+- `start_worker.py` provides the preferred cross-platform DFS-lite worker bootstrap with zero-arg native startup, auto-port selection, hostname-based worker IDs, and optional Docker mode.
 - `stop_all.py` provides a repo-scoped cleanup utility that stops the managed master, native workers, and known worker containers so ports can be reclaimed quickly.
 - `start_dashboard.py`, `start_master.sh`, and `start_worker.bat` remain available as compatibility bootstrap paths.
 - `website/` contains a clean React website package for the project overview, architecture, validation summary, and quick-start flows.
@@ -174,6 +174,21 @@ python3 -m master.master --config config.json --log-level INFO
 - `http://127.0.0.1:18080` is the actual DFS-lite master control panel served by `master/master_dfs.py`.
 - `http://127.0.0.1:5001`, `http://127.0.0.1:5002`, and other worker ports are the actual DFS-lite worker dashboards served by `worker/worker_dfs.py`.
 
+### ◎ Zero-Configuration LAN Discovery
+
+- Workers broadcast a UDP beacon every 3 seconds with payload fields `worker_id` and `endpoint`.
+- The master listens on UDP `54321` by default, auto-registers discovered workers, and updates `/api/status` without manual endpoint editing.
+- Worker endpoints are advertised as `http://<lan_ip>:<port>`, so master-to-worker traffic uses the LAN interface instead of `127.0.0.1`.
+- Discovery is controlled by `network.enable_udp_discovery` and `network.discovery_port` in `config_extended.json`.
+
+If a network blocks UDP broadcast between devices, set explicit discovery unicast targets on the worker side:
+
+```bash
+python3 start_worker.py --allow-unsupported-python --udp-discovery-targets 192.168.1.10
+```
+
+Multiple fallback targets are supported as a comma-separated list, for example `--udp-discovery-targets 192.168.1.10,192.168.1.11`.
+
 ### ◎ Local Demo Bootstrap
 
 For the fastest local dashboard demo on macOS or Linux, run:
@@ -195,20 +210,20 @@ python3 start_dashboard.py --allow-unsupported-python --master-port 18080
 Start two DFS-lite workers in separate terminals:
 
 ```bash
-python3 start_worker.py --mode native --allow-unsupported-python --worker-id worker_1 --port 5001 --storage-dir /tmp/hetero-fedlearn-worker-1
-python3 start_worker.py --mode native --allow-unsupported-python --worker-id worker_2 --port 5002 --storage-dir /tmp/hetero-fedlearn-worker-2
+python3 start_worker.py --allow-unsupported-python --port 5001
+python3 start_worker.py --allow-unsupported-python --port 5002
 ```
 
 Start the DFS-lite master dashboard:
 
 ```bash
-python3 start_master.py --allow-unsupported-python --config config_extended.json --host 127.0.0.1 --port 18080
+python3 start_master.py --allow-unsupported-python
 ```
 
 Open the dashboards:
 
-- `http://127.0.0.1:18080/` for the NameNode-style master view
-- `http://127.0.0.1:5001/` and `http://127.0.0.1:5002/` for the DataNode worker views
+- `http://<master-lan-ip>:18080/` for the NameNode-style master view
+- `http://<worker-lan-ip>:5001/` and `http://<worker-lan-ip>:5002/` for the DataNode worker views
 
 ### ◎ Validated Outcome
 
@@ -216,7 +231,7 @@ Open the dashboards:
 - the asynchronous master thread completes 10 communication rounds without blocking Flask
 - the master dashboard serves live block-map and worker-health state on `/api/status`
 - the master dashboard can register workers, upload a CSV dataset, and update training settings from the browser
-- the worker dashboard can register itself with the master by posting its advertised endpoint
+- workers auto-register through UDP beacons and still support manual dashboard registration as a fallback
 - validation accuracy reaches `0.9737`
 
 ## ▣ Deployment Paths

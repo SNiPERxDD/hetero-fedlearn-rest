@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -41,8 +42,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--worker-id",
-        default=os.environ.get("WORKER_ID", "worker-node"),
-        help="Worker identifier exposed by the DFS-lite worker service.",
+        default=os.environ.get("WORKER_ID"),
+        help="Worker identifier exposed by the DFS-lite worker service. Defaults to <hostname>-<port>.",
     )
     parser.add_argument(
         "--host",
@@ -100,6 +101,14 @@ def parse_args() -> argparse.Namespace:
         "--restart-policy",
         default="unless-stopped",
         help="Docker restart policy used in docker mode.",
+    )
+    parser.add_argument(
+        "--udp-discovery-targets",
+        default=os.environ.get("UDP_DISCOVERY_TARGETS"),
+        help=(
+            "Optional comma-separated IPv4 targets for UDP beacon unicast fallback "
+            "(for networks where broadcast is filtered)."
+        ),
     )
     return parser.parse_args()
 
@@ -185,19 +194,69 @@ def default_storage_dir(repo_root: Path, worker_id: str) -> Path:
     return repo_root / "storage" / worker_id
 
 
-def run_native_worker(args: argparse.Namespace, *, repo_root: Path, storage_dir: Path) -> int:
+def is_port_available(host: str, port: int) -> bool:
+    """Return whether a TCP port can be bound on the requested host."""
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe_socket:
+        probe_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe_socket.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
+def resolve_port(host: str, requested_port: int, max_offset: int = 100) -> int:
+    """Resolve the first free TCP port at or above the requested port."""
+
+    if requested_port <= 0:
+        raise SystemExit("--port must be a positive integer.")
+
+    for offset in range(max_offset + 1):
+        candidate = requested_port + offset
+        if candidate > 65535:
+            break
+        if is_port_available(host, candidate):
+            return candidate
+    raise SystemExit(
+        f"No available port found from {requested_port} to {min(requested_port + max_offset, 65535)} on {host}."
+    )
+
+
+def resolve_worker_id(requested_worker_id: str | None, port: int) -> str:
+    """Resolve the worker identifier, defaulting to hostname-port."""
+
+    if requested_worker_id and requested_worker_id.strip():
+        return requested_worker_id.strip()
+    return f"{socket.gethostname()}-{port}"
+
+
+def run_native_worker(
+    args: argparse.Namespace,
+    *,
+    repo_root: Path,
+    storage_dir: Path,
+    worker_id: str,
+    port: int,
+) -> int:
     """Launch the DFS-lite worker directly through a Python virtual environment."""
 
-    allow_unsupported = args.allow_unsupported_python or os.environ.get("ALLOW_UNSUPPORTED_PYTHON") == "1"
+    allow_unsupported_env = os.environ.get("ALLOW_UNSUPPORTED_PYTHON")
+    allow_unsupported_default = allow_unsupported_env != "0"
+    allow_unsupported = args.allow_unsupported_python or allow_unsupported_default
     ensure_supported_python(allow_unsupported=allow_unsupported, script_name="start_worker.py")
     storage_dir.mkdir(parents=True, exist_ok=True)
 
     requirements_path = repo_root / "worker" / "requirements.txt"
-    worker_url = f"http://127.0.0.1:{args.port}"
+    worker_url = f"http://127.0.0.1:{port}"
     venv_python = ensure_virtualenv(args, requirements_path)
     child_env = os.environ.copy()
     if allow_unsupported:
         child_env["ALLOW_UNSUPPORTED_PYTHON"] = "1"
+    child_env["WORKER_PORT"] = str(port)
+    child_env["WORKER_ID"] = worker_id
+    if args.udp_discovery_targets:
+        child_env["UDP_DISCOVERY_TARGETS"] = args.udp_discovery_targets
 
     maybe_open_browser(worker_url, disabled=args.no_open_browser)
     command = [
@@ -207,9 +266,9 @@ def run_native_worker(args: argparse.Namespace, *, repo_root: Path, storage_dir:
         "--host",
         args.host,
         "--port",
-        str(args.port),
+        str(port),
         "--worker-id",
-        args.worker_id,
+        worker_id,
         "--storage-dir",
         str(storage_dir),
         "--log-level",
@@ -219,7 +278,14 @@ def run_native_worker(args: argparse.Namespace, *, repo_root: Path, storage_dir:
     return int(completed.returncode)
 
 
-def run_docker_worker(args: argparse.Namespace, *, repo_root: Path, storage_dir: Path) -> int:
+def run_docker_worker(
+    args: argparse.Namespace,
+    *,
+    repo_root: Path,
+    storage_dir: Path,
+    worker_id: str,
+    port: int,
+) -> int:
     """Launch the DFS-lite worker in Docker and wait for its health endpoint."""
 
     ensure_command_available("docker")
@@ -245,27 +311,33 @@ def run_docker_worker(args: argparse.Namespace, *, repo_root: Path, storage_dir:
             ]
         )
 
-    run_command(
+    docker_run_command = [
+        "docker",
+        "run",
+        "-d",
+        "--restart",
+        args.restart_policy,
+        "--name",
+        args.container_name,
+        "-e",
+        f"WORKER_ID={worker_id}",
+    ]
+    if args.udp_discovery_targets:
+        docker_run_command.extend(["-e", f"UDP_DISCOVERY_TARGETS={args.udp_discovery_targets}"])
+
+    docker_run_command.extend(
         [
-            "docker",
-            "run",
-            "-d",
-            "--restart",
-            args.restart_policy,
-            "--name",
-            args.container_name,
-            "-e",
-            f"WORKER_ID={args.worker_id}",
             "-p",
-            f"{args.port}:5000",
+            f"{port}:5000",
             "-v",
             f"{storage_dir.resolve()}:/app/datanode_storage",
             args.image,
         ]
     )
-    wait_for_worker_health(args.port)
-    maybe_open_browser(f"http://127.0.0.1:{args.port}", disabled=args.no_open_browser)
-    print(f"DFS-lite worker started on http://127.0.0.1:{args.port}")
+    run_command(docker_run_command)
+    wait_for_worker_health(port)
+    maybe_open_browser(f"http://127.0.0.1:{port}", disabled=args.no_open_browser)
+    print(f"DFS-lite worker started on http://127.0.0.1:{port}")
     return 0
 
 
@@ -274,10 +346,28 @@ def main() -> int:
 
     args = parse_args()
     repo_root = Path(__file__).resolve().parent
-    storage_dir = (args.storage_dir or default_storage_dir(repo_root, args.worker_id)).resolve()
+    port_probe_host = args.host if args.mode == "native" else "127.0.0.1"
+    resolved_port = resolve_port(port_probe_host, int(args.port))
+    if resolved_port != int(args.port):
+        print(f"Port {args.port} is in use; automatically selected port {resolved_port}.")
+
+    resolved_worker_id = resolve_worker_id(args.worker_id, resolved_port)
+    storage_dir = (args.storage_dir or default_storage_dir(repo_root, resolved_worker_id)).resolve()
     if args.mode == "native":
-        return run_native_worker(args, repo_root=repo_root, storage_dir=storage_dir)
-    return run_docker_worker(args, repo_root=repo_root, storage_dir=storage_dir)
+        return run_native_worker(
+            args,
+            repo_root=repo_root,
+            storage_dir=storage_dir,
+            worker_id=resolved_worker_id,
+            port=resolved_port,
+        )
+    return run_docker_worker(
+        args,
+        repo_root=repo_root,
+        storage_dir=storage_dir,
+        worker_id=resolved_worker_id,
+        port=resolved_port,
+    )
 
 
 if __name__ == "__main__":

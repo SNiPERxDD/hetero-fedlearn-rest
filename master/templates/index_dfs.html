@@ -255,6 +255,15 @@
       color: var(--text);
     }
 
+    .discovery-banner {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(12, 124, 123, 0.1);
+      border: 1px solid var(--border);
+      line-height: 1.5;
+    }
+
     .status-banner.error {
       background: rgba(180, 35, 24, 0.1);
       color: var(--danger);
@@ -336,6 +345,14 @@
           This master now acts as a real control plane: connect workers, switch datasets, tune training settings,
           and start the federated loop directly from the browser.
         </p>
+        <div class="discovery-banner" id="discovery-summary">
+          Master LAN endpoint: <span class="mono">http://{{ master_lan_ip }}:{{ master_port }}</span>
+          {% if udp_discovery_enabled %}
+            | Listening for worker beacons on UDP <span class="mono">{{ udp_discovery_port }}</span>.
+          {% else %}
+            | UDP auto-discovery is disabled.
+          {% endif %}
+        </div>
         <div class="hero-actions">
           <button id="start-training">Start Background Training</button>
           <button class="button-secondary" id="refresh-now">Refresh Status</button>
@@ -658,6 +675,14 @@
       const validationAccuracy = document.getElementById("validation-accuracy");
       const validationLoss = document.getElementById("validation-loss");
       const startButton = document.getElementById("start-training");
+      const discoverySummary = document.getElementById("discovery-summary");
+
+      if (state.discovery) {
+        const discoveryState = state.discovery.enabled
+          ? `Listening for worker beacons on UDP ${state.discovery.port}`
+          : "UDP auto-discovery is disabled";
+        discoverySummary.textContent = `Master LAN endpoint: http://${state.discovery.master_lan_ip} | ${discoveryState}.`;
+      }
 
       if (state.training_error) {
         setBanner(state.training_error, true);

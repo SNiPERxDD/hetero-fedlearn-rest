@@ -24,6 +24,14 @@ def allocate_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def allocate_udp_port() -> int:
+    """Allocate an ephemeral UDP port for discovery listener tests."""
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
 class LocalDFSWorkerServer:
     """Run a DFS-lite worker app in-process on a disposable local port."""
 
@@ -136,6 +144,8 @@ def test_worker_persists_blocks_and_reports_status(tmp_path: Path) -> None:
     assert status_response.status_code == 200
     assert status_payload["storage_bytes"] > 0
     assert status_payload["block_count"] == 1
+    assert status_payload["lan_endpoint"].startswith("http://")
+    assert status_payload["udp_beacon_enabled"] is False
 
     train_response = client.post(
         "/train_round",
@@ -441,3 +451,45 @@ def test_worker_can_register_itself_with_master_control_plane(tmp_path: Path) ->
     finally:
         worker_server.shutdown()
         worker_thread.join(timeout=5)
+
+
+def test_master_udp_discovery_auto_registers_beaconed_workers(tmp_path: Path) -> None:
+    """The master should auto-register workers announced over UDP beacons."""
+
+    discovery_port = allocate_udp_port()
+    config_path = tmp_path / "config_extended.json"
+    write_extended_config(config_path, [allocate_port(), allocate_port()])
+
+    config_payload = json.loads(config_path.read_text(encoding="utf-8"))
+    config_payload["workers"] = []
+    config_payload["network"]["discovery_port"] = discovery_port
+    config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+
+    service = FederatedMasterDFS(load_config(config_path), upload_dir=tmp_path / "uploads")
+    app = create_master_app(
+        config_path=config_path,
+        autostart=False,
+        service=service,
+        enable_udp_discovery=True,
+    )
+    client = app.test_client()
+
+    beacon_payload = {
+        "worker_id": "worker_udp",
+        "endpoint": "http://127.0.0.1:5999",
+    }
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as beacon_socket:
+        beacon_socket.sendto(json.dumps(beacon_payload).encode("utf-8"), ("127.0.0.1", discovery_port))
+
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        workers = client.get("/api/config").get_json()["workers"]
+        if any(worker["worker_id"] == "worker_udp" for worker in workers):
+            break
+        time.sleep(0.1)
+
+    config_after_discovery = client.get("/api/config").get_json()
+    discovered_worker = next(
+        worker for worker in config_after_discovery["workers"] if worker["worker_id"] == "worker_udp"
+    )
+    assert discovered_worker["endpoint"] == "http://127.0.0.1:5999"
