@@ -432,6 +432,33 @@ def test_master_start_training_refuses_offline_registered_workers(tmp_path: Path
     )
 
 
+def test_dfs_master_ignores_offline_workers_when_assigning_blocks(tmp_path: Path) -> None:
+    """Training should proceed with the reachable subset instead of assigning blocks to offline workers."""
+
+    online_port = allocate_port()
+    offline_port = allocate_port()
+    online_storage_dir = tmp_path / "worker_1_storage"
+    online_server = LocalDFSWorkerServer(worker_id="worker_1", port=online_port, storage_dir=online_storage_dir)
+    online_server.start()
+
+    try:
+        config_path = tmp_path / "config_extended.json"
+        write_extended_config(config_path, [online_port, offline_port])
+        service = FederatedMasterDFS(load_config(config_path))
+
+        assert service.start_training_thread() is True
+        service.wait_for_training(timeout=30)
+
+        snapshot = service.state.snapshot()
+        assert snapshot["training_completed"] is True
+        assert snapshot["training_error"] is None
+        assert len(snapshot["block_map"]) == 1
+        assert snapshot["block_map"][0]["replicas"] == ["worker_1"]
+        assert len(list(online_storage_dir.glob("*.csv"))) == 1
+    finally:
+        online_server.stop()
+
+
 def test_master_runtime_config_and_dataset_upload_workflow(tmp_path: Path) -> None:
     """The master control plane must accept config edits and CSV dataset uploads."""
 

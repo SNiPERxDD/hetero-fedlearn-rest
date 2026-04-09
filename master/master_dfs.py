@@ -633,6 +633,16 @@ class FederatedMasterDFS:
             "warning": warning,
         }
 
+    def healthy_workers_snapshot(self) -> list[WorkerSpec]:
+        """Return the workers that are currently reachable from the master."""
+
+        worker_health = self.refresh_worker_health()
+        return [
+            worker
+            for worker in self.workers
+            if worker_health.get(worker.worker_id, {}).get("healthy", False)
+        ]
+
     def update_runtime_config(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Update editable runtime configuration values safely."""
 
@@ -845,12 +855,17 @@ class FederatedMasterDFS:
 
         raise ValueError(f"Unsupported dataset source: {source}")
 
-    def prepare_blocks(self) -> tuple[list[tuple[BlockAssignment, np.ndarray, np.ndarray]], np.ndarray, np.ndarray]:
+    def prepare_blocks(
+        self,
+        *,
+        active_workers: Sequence[WorkerSpec] | None = None,
+    ) -> tuple[list[tuple[BlockAssignment, np.ndarray, np.ndarray]], np.ndarray, np.ndarray]:
         """Split, scale, and convert the training dataset into DFS-like blocks."""
 
-        if not self.workers:
+        workers_for_assignment = list(active_workers) if active_workers is not None else list(self.workers)
+        if not workers_for_assignment:
             raise RuntimeError(
-                "No workers are registered. Start at least one worker and wait for discovery before training."
+                "No healthy workers are currently reachable. Start a worker or fix its advertised endpoint before training."
             )
 
         features, labels = self.load_dataset()
@@ -888,17 +903,17 @@ class FederatedMasterDFS:
         shards = partition_dataset(
             train_features,
             train_labels,
-            partition_count=len(self.workers),
+            partition_count=len(workers_for_assignment),
             random_seed=self.random_seed,
         )
-        replication_factor = self.effective_replication_factor()
+        replication_factor = self.effective_replication_factor(worker_count=len(workers_for_assignment))
 
         block_payloads: list[tuple[BlockAssignment, np.ndarray, np.ndarray]] = []
         block_map: dict[str, dict[str, Any]] = {}
         for block_index, (local_features, local_labels) in enumerate(shards):
             block_id = f"blk_{uuid.uuid4().hex[:8]}"
             replica_ids = [
-                self.workers[(block_index + replica_offset) % len(self.workers)].worker_id
+                workers_for_assignment[(block_index + replica_offset) % len(workers_for_assignment)].worker_id
                 for replica_offset in range(replication_factor)
             ]
             assignment = BlockAssignment(
@@ -1140,7 +1155,12 @@ class FederatedMasterDFS:
         """Run the DFS-lite federated training loop inside the background thread."""
 
         try:
-            block_payloads, train_features, train_labels = self.prepare_blocks()
+            active_workers = self.healthy_workers_snapshot()
+            if not active_workers:
+                raise RuntimeError(
+                    "No healthy workers are currently reachable. Start a worker or fix its advertised endpoint before training."
+                )
+            block_payloads, train_features, train_labels = self.prepare_blocks(active_workers=active_workers)
             self.initialise_blocks(block_payloads)
 
             rounds = int(self.training_config.get("rounds", 10))
