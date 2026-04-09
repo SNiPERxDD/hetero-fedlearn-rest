@@ -401,6 +401,25 @@
       banner.className = isError ? "connection-status error" : "connection-status";
     }
 
+    function formatRegistrationError(state) {
+      const detail = state.last_registration_error || "";
+      return detail
+        ? `Worker could not register with the master. ${detail}`
+        : "Worker could not register with the master.";
+    }
+
+    function syncConnectionBanner(state) {
+      if (state.last_registration_status === "connected" && state.master_endpoint) {
+        setConnectionBanner(`Connected to ${state.master_endpoint} and registered as ${state.worker_id}.`);
+        return;
+      }
+      if (state.last_registration_status === "failed") {
+        setConnectionBanner(formatRegistrationError(state), true);
+        return;
+      }
+      setConnectionBanner("No master connected yet.");
+    }
+
     function renderState(state) {
       document.getElementById("worker-title").textContent = state.worker_id;
       document.getElementById("worker-id").textContent = state.worker_id;
@@ -439,6 +458,7 @@
       const readyPill = document.getElementById("ready-pill");
       readyPill.textContent = state.ready ? "Ready" : "Idle";
       readyPill.className = `status ${state.ready ? "" : "idle"}`;
+      syncConnectionBanner(state);
 
       const blockBody = document.getElementById("block-body");
       blockBody.innerHTML = (state.blocks || []).map((block) => `
@@ -486,7 +506,7 @@
         renderState(payload.state);
         setConnectionBanner(`Connected to ${payload.connection.master_endpoint} and registered as ${payload.connection.worker_id}.`);
       } catch (error) {
-        setConnectionBanner(error.message, true);
+        setConnectionBanner(`Worker could not register with the master. ${error.message}`, true);
         await fetchStatus();
       }
     }

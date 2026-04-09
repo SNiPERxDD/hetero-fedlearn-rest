@@ -294,3 +294,42 @@ def test_worker_dashboard_registration_failure_state(page: Page, tmp_path: Path)
         expect(page.locator("#registration-error")).not_to_have_text("n/a", timeout=30000)
     finally:
         worker_server.stop()
+
+
+def test_worker_dashboard_auto_registration_state_updates_banner(page: Page, tmp_path: Path, monkeypatch) -> None:
+    """The worker dashboard banner should reflect auto-registration discovered via polling."""
+
+    worker_port = allocate_port()
+    master_port = allocate_port()
+    worker_storage_dir = tmp_path / "worker_storage"
+
+    config_path = tmp_path / "config_extended.json"
+    write_extended_config(config_path, [allocate_port(), allocate_port()], worker_count=0)
+    service = FederatedMasterDFS(load_config(config_path), upload_dir=tmp_path / "uploads")
+    master_server = LocalServer(master_port, create_master_app(config_path=config_path, autostart=False, service=service))
+    master_server.start()
+
+    monkeypatch.setenv("MASTER_ENDPOINT", f"http://127.0.0.1:{master_port}")
+    monkeypatch.setenv("ADVERTISED_ENDPOINT", f"http://127.0.0.1:{worker_port}")
+    worker_server = LocalServer(
+        worker_port,
+        create_worker_app(
+            default_worker_id="worker_auto_ui",
+            storage_dir=worker_storage_dir,
+            bound_host="127.0.0.1",
+            bound_port=worker_port,
+            enable_udp_beacon=False,
+            enable_master_discovery=False,
+        ),
+    )
+    worker_server.start()
+
+    try:
+        worker_url = f"http://127.0.0.1:{worker_port}"
+        page.goto(worker_url, wait_until="domcontentloaded")
+        expect(page.locator("#connection-status")).to_contain_text("Connected to", timeout=30000)
+        expect(page.locator("#connection-status")).to_contain_text(f"http://127.0.0.1:{master_port}", timeout=30000)
+        expect(page.locator("#registration-state")).to_have_text("connected", timeout=30000)
+    finally:
+        worker_server.stop()
+        master_server.stop()
