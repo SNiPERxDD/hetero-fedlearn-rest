@@ -110,6 +110,16 @@ def parse_args() -> argparse.Namespace:
             "(for networks where broadcast is filtered)."
         ),
     )
+    parser.add_argument(
+        "--master-endpoint",
+        default=os.environ.get("MASTER_ENDPOINT"),
+        help="Optional master endpoint URL. When set, the worker will auto-register itself on startup.",
+    )
+    parser.add_argument(
+        "--advertised-endpoint",
+        default=os.environ.get("ADVERTISED_ENDPOINT"),
+        help="Optional worker endpoint URL advertised to the master during auto-registration.",
+    )
     return parser.parse_args()
 
 
@@ -257,6 +267,10 @@ def run_native_worker(
     child_env["WORKER_ID"] = worker_id
     if args.udp_discovery_targets:
         child_env["UDP_DISCOVERY_TARGETS"] = args.udp_discovery_targets
+    if args.master_endpoint:
+        child_env["MASTER_ENDPOINT"] = args.master_endpoint
+    if args.advertised_endpoint:
+        child_env["ADVERTISED_ENDPOINT"] = args.advertised_endpoint
 
     maybe_open_browser(worker_url, disabled=args.no_open_browser)
     command = [
@@ -324,6 +338,10 @@ def run_docker_worker(
     ]
     if args.udp_discovery_targets:
         docker_run_command.extend(["-e", f"UDP_DISCOVERY_TARGETS={args.udp_discovery_targets}"])
+    if args.master_endpoint:
+        docker_run_command.extend(["-e", f"MASTER_ENDPOINT={args.master_endpoint}"])
+    if args.advertised_endpoint:
+        docker_run_command.extend(["-e", f"ADVERTISED_ENDPOINT={args.advertised_endpoint}"])
 
     docker_run_command.extend(
         [

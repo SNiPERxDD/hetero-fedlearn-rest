@@ -90,6 +90,20 @@ def udp_beacon_thread(state: "WorkerDFSState") -> None:
             time.sleep(interval_seconds)
 
 
+def auto_register_master_thread(state: "WorkerDFSState", master_endpoint: str, advertised_endpoint: str) -> None:
+    """Retry worker registration against a configured master endpoint."""
+
+    retry_interval_seconds = 5.0
+    while True:
+        try:
+            state.connect_to_master(master_endpoint=master_endpoint, advertised_endpoint=advertised_endpoint)
+            LOGGER.info("Worker %s auto-registered with master at %s.", state.worker_id, master_endpoint)
+            return
+        except RuntimeError as error:
+            LOGGER.warning("Worker %s could not auto-register with %s: %s", state.worker_id, master_endpoint, error)
+            time.sleep(retry_interval_seconds)
+
+
 def configure_logging(level: str = "INFO") -> None:
     """Configure worker logging output."""
 
@@ -450,6 +464,8 @@ def create_app(
     explicit_targets = [value.strip() for value in raw_targets.split(",") if value.strip()]
     resolved_lan_ip = get_lan_ip()
     resolved_targets = list(beacon_targets(resolved_lan_ip, explicit_targets))
+    master_endpoint = os.environ.get("MASTER_ENDPOINT", "").strip()
+    advertised_endpoint = os.environ.get("ADVERTISED_ENDPOINT", "").strip() or worker_lan_endpoint(resolved_lan_ip, resolved_port)
     if enable_udp_beacon is None:
         beacon_enabled = os.environ.get("ENABLE_UDP_BEACON", "1") != "0"
         if "PYTEST_CURRENT_TEST" in os.environ:
@@ -482,6 +498,15 @@ def create_app(
             name=f"worker-udp-beacon-{resolved_port}",
         )
         thread.start()
+
+    if master_endpoint:
+        registration_thread = threading.Thread(
+            target=auto_register_master_thread,
+            args=(state, master_endpoint, advertised_endpoint),
+            daemon=True,
+            name=f"worker-master-register-{resolved_port}",
+        )
+        registration_thread.start()
 
     @app.get("/")
     def index() -> str:

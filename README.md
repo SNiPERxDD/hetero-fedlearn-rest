@@ -189,6 +189,14 @@ python3 start_worker.py --allow-unsupported-python --udp-discovery-targets 192.1
 
 Multiple fallback targets are supported as a comma-separated list, for example `--udp-discovery-targets 192.168.1.10,192.168.1.11`.
 
+If you want guaranteed visibility even when discovery is filtered, also set a master endpoint so the worker auto-registers on startup:
+
+```bash
+python3 start_worker.py --allow-unsupported-python --master-endpoint http://10.136.149.10:18080 --advertised-endpoint http://10.136.149.171:5000
+```
+
+When the worker is running on the same network but the dashboard still does not show it, this direct registration path is the fallback to use.
+
 ### ◎ Local Demo Bootstrap
 
 For the fastest local dashboard demo on macOS or Linux, run:

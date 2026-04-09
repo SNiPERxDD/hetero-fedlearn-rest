@@ -453,6 +453,49 @@ def test_worker_can_register_itself_with_master_control_plane(tmp_path: Path) ->
         worker_thread.join(timeout=5)
 
 
+def test_worker_auto_registers_with_master_endpoint_env(tmp_path: Path, monkeypatch) -> None:
+    """A worker should auto-register when MASTER_ENDPOINT is provided in the environment."""
+
+    master_port = allocate_port()
+    worker_port = allocate_port()
+
+    config_path = tmp_path / "config_extended.json"
+    write_extended_config(config_path, [allocate_port(), allocate_port()])
+    service = FederatedMasterDFS(load_config(config_path), upload_dir=tmp_path / "uploads")
+    master_app = create_master_app(config_path=config_path, autostart=False, service=service)
+    master_server = make_server("127.0.0.1", master_port, master_app)
+    master_thread = threading.Thread(target=master_server.serve_forever, daemon=True)
+    master_thread.start()
+    time.sleep(0.1)
+
+    worker_storage_dir = tmp_path / "worker_storage"
+    monkeypatch.setenv("MASTER_ENDPOINT", f"http://127.0.0.1:{master_port}")
+    monkeypatch.setenv("ADVERTISED_ENDPOINT", f"http://127.0.0.1:{worker_port}")
+    worker_app = create_worker_app(default_worker_id="worker_env", storage_dir=worker_storage_dir)
+    worker_server = make_server("127.0.0.1", worker_port, worker_app)
+    worker_thread = threading.Thread(target=worker_server.serve_forever, daemon=True)
+    worker_thread.start()
+    time.sleep(0.5)
+
+    try:
+        master_client = master_app.test_client()
+        config_payload = master_client.get("/api/config").get_json()
+        registered_worker = next(
+            worker for worker in config_payload["workers"] if worker["worker_id"] == "worker_env"
+        )
+        assert registered_worker["endpoint"] == f"http://127.0.0.1:{worker_port}"
+
+        status_payload = worker_app.test_client().get("/api/status").get_json()
+        assert status_payload["master_endpoint"] == f"http://127.0.0.1:{master_port}"
+        assert status_payload["advertised_endpoint"] == f"http://127.0.0.1:{worker_port}"
+        assert status_payload["last_registration_status"] == "connected"
+    finally:
+        master_server.shutdown()
+        master_thread.join(timeout=5)
+        worker_server.shutdown()
+        worker_thread.join(timeout=5)
+
+
 def test_master_udp_discovery_auto_registers_beaconed_workers(tmp_path: Path) -> None:
     """The master should auto-register workers announced over UDP beacons."""
 

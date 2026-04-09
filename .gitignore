@@ -71,6 +71,7 @@ website_generated/
 
 # Frankenreview artifacts
 .frankenreview/
+.retix
 
 # Local operator notes and future guides
 local_guides/
