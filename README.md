@@ -1,6 +1,6 @@
 # Hetero FedLearn REST
 
-[![Tests](https://img.shields.io/badge/tests-29%20passed-1f6feb)](./README.md#-verification)
+[![Tests](https://img.shields.io/badge/tests-31%20passed-1f6feb)](./README.md#-verification)
 [![Runtime](https://img.shields.io/badge/runtime-baseline%20%2B%20DFS--lite-0a7f6f)](./README.md#-operating-modes)
 [![Launchers](https://img.shields.io/badge/launchers-python--first-c26a14)](./README.md#-preferred-entry-points)
 [![Workers](https://img.shields.io/badge/workers-http%20%2B%20zeroconf-5b6b73)](./README.md#-deployment-paths)
@@ -21,7 +21,7 @@ The repository is structured as an engineering runtime first, not a demo shell: 
 
 ## ◇ Current State
 
-- Verified suite state: `29 passed`
+- Verified suite state: `31 passed`
 - Verified DFS-lite validation accuracy: `0.9737`
 - Preferred master launcher: `start_master.py`
 - Preferred worker launcher: `start_worker.py`

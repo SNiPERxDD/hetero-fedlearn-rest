@@ -179,6 +179,7 @@ def udp_discovery_listener(runtime_service: "FederatedMasterDFS", discovery_port
 
             worker_id = str(beacon_payload.get("worker_id", "")).strip()
             endpoint = str(beacon_payload.get("endpoint", "")).strip().rstrip("/")
+            endpoint_candidates = beacon_payload.get("endpoint_candidates", [])
             if not worker_id or not endpoint:
                 continue
             if not endpoint.startswith(("http://", "https://")):
@@ -191,7 +192,11 @@ def udp_discovery_listener(runtime_service: "FederatedMasterDFS", discovery_port
                 continue
 
             try:
-                runtime_service.register_worker(worker_id=worker_id, endpoint=endpoint)
+                runtime_service.register_worker(
+                    worker_id=worker_id,
+                    endpoint=endpoint,
+                    endpoint_candidates=endpoint_candidates,
+                )
                 known_endpoints[worker_id] = endpoint
                 LOGGER.info("Discovered worker %s at %s via UDP beacon from %s", 
                            worker_id, endpoint, sender_addr[0])
@@ -650,11 +655,39 @@ class FederatedMasterDFS:
             self.config["network"] = self.network_config
             return self.runtime_config_snapshot()
 
-    def register_worker(self, worker_id: str, endpoint: str) -> dict[str, Any]:
+    def resolve_worker_endpoint(self, endpoint: str, endpoint_candidates: Sequence[str] | None = None) -> str:
+        """Resolve the first worker endpoint candidate that is reachable from the master."""
+
+        candidates: list[str] = []
+        for candidate in [endpoint, *(endpoint_candidates or [])]:
+            resolved_candidate = str(candidate).strip().rstrip("/")
+            if not resolved_candidate or resolved_candidate in candidates:
+                continue
+            if not resolved_candidate.startswith(("http://", "https://")):
+                continue
+            candidates.append(resolved_candidate)
+
+        health_timeout_seconds = float(self.network_config.get("health_timeout_seconds", 3.0))
+        for candidate in candidates:
+            try:
+                response = self.session.get(f"{candidate}/health", timeout=health_timeout_seconds)
+                response.raise_for_status()
+                return candidate
+            except requests.RequestException:
+                continue
+
+        return endpoint.strip().rstrip("/")
+
+    def register_worker(
+        self,
+        worker_id: str,
+        endpoint: str,
+        endpoint_candidates: Sequence[str] | None = None,
+    ) -> dict[str, Any]:
         """Register or update a worker endpoint in the runtime configuration."""
 
         resolved_worker_id = worker_id.strip()
-        resolved_endpoint = endpoint.strip().rstrip("/")
+        resolved_endpoint = self.resolve_worker_endpoint(endpoint, endpoint_candidates)
         if not resolved_worker_id:
             raise ValueError("worker_id must be non-empty.")
         if not resolved_endpoint:
@@ -1312,11 +1345,16 @@ def create_app(
         payload = request.get_json(silent=True) or {}
         worker_id = str(payload.get("worker_id", "")).strip()
         endpoint = str(payload.get("endpoint", "")).strip()
+        endpoint_candidates = payload.get("endpoint_candidates", [])
         if not worker_id or not endpoint:
             return jsonify({"error": "worker_id and endpoint are required."}), 400
 
         try:
-            response_payload = runtime_service.register_worker(worker_id=worker_id, endpoint=endpoint)
+            response_payload = runtime_service.register_worker(
+                worker_id=worker_id,
+                endpoint=endpoint,
+                endpoint_candidates=endpoint_candidates,
+            )
         except (RuntimeError, ValueError) as error:
             status_code = 409 if isinstance(error, RuntimeError) else 400
             return jsonify({"error": str(error)}), status_code

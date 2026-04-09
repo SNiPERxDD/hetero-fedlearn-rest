@@ -169,7 +169,8 @@ def udp_beacon_thread(state: "WorkerDFSState") -> None:
             with state.lock:
                 payload = {
                     "worker_id": state.worker_id,
-                    "endpoint": worker_lan_endpoint(state.lan_ip, state.service_port),
+                    "endpoint": state.advertised_endpoint or worker_lan_endpoint(state.lan_ip, state.service_port),
+                    "endpoint_candidates": list(state.endpoint_candidates),
                 }
                 discovery_port = int(state.udp_discovery_port)
                 interval_seconds = float(state.beacon_interval_seconds)
@@ -390,6 +391,7 @@ class WorkerDFSState:
     udp_beacon_enabled: bool = False
     beacon_interval_seconds: float = 3.0
     udp_beacon_targets: list[str] = field(default_factory=list)
+    endpoint_candidates: list[str] = field(default_factory=list)
     lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
     def ensure_storage_dir(self) -> None:
@@ -566,6 +568,7 @@ class WorkerDFSState:
                 "udp_discovery_port": self.udp_discovery_port,
                 "udp_beacon_enabled": self.udp_beacon_enabled,
                 "udp_beacon_targets": list(self.udp_beacon_targets),
+                "endpoint_candidates": list(self.endpoint_candidates),
             }
 
     def connect_to_master(
@@ -587,6 +590,7 @@ class WorkerDFSState:
         payload = {
             "worker_id": self.worker_id,
             "endpoint": resolved_advertised_endpoint,
+            "endpoint_candidates": list(self.endpoint_candidates),
         }
         try:
             response = requests.post(
@@ -634,7 +638,8 @@ def create_app(
     resolved_discovery_port = int(udp_discovery_port or os.environ.get("UDP_DISCOVERY_PORT", DEFAULT_UDP_DISCOVERY_PORT))
     raw_targets = os.environ.get("UDP_DISCOVERY_TARGETS", "")
     explicit_targets = [value.strip() for value in raw_targets.split(",") if value.strip()]
-    resolved_lan_ip = get_lan_ip()
+    detected_ips = get_all_lan_ips()
+    resolved_lan_ip = detected_ips[0] if detected_ips else get_lan_ip()
     resolved_targets = list(beacon_targets(resolved_lan_ip, explicit_targets))
     master_endpoint = os.environ.get("MASTER_ENDPOINT", "").strip()
     advertised_endpoint = os.environ.get("ADVERTISED_ENDPOINT", "").strip() or default_advertised_endpoint(
@@ -654,6 +659,15 @@ def create_app(
             master_discovery_enabled = False
     else:
         master_discovery_enabled = bool(enable_master_discovery)
+    endpoint_candidates: list[str] = []
+    preferred_candidates = [advertised_endpoint, *(f"http://{ip}:{resolved_port}" for ip in detected_ips)]
+    for candidate in preferred_candidates:
+        if candidate and candidate not in endpoint_candidates:
+            endpoint_candidates.append(candidate)
+    if bound_host in {"127.0.0.1", "localhost"}:
+        loopback_candidate = f"http://127.0.0.1:{resolved_port}"
+        if loopback_candidate not in endpoint_candidates:
+            endpoint_candidates.append(loopback_candidate)
 
     resolved_storage_dir = Path(storage_dir or os.environ.get("DATANODE_STORAGE_DIR") or (
         Path(__file__).resolve().parent / "datanode_storage"
@@ -667,6 +681,7 @@ def create_app(
         udp_beacon_enabled=beacon_enabled,
         advertised_endpoint=advertised_endpoint,
         udp_beacon_targets=resolved_targets,
+        endpoint_candidates=endpoint_candidates,
     )
     state.ensure_storage_dir()
     app.config["WORKER_STATE"] = state

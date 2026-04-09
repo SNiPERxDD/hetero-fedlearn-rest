@@ -683,3 +683,60 @@ def test_master_autostart_waits_for_worker_registration(tmp_path: Path, monkeypa
         master_thread.join(timeout=5)
         worker_server.shutdown()
         worker_thread.join(timeout=5)
+
+
+def test_master_prefers_reachable_worker_endpoint_candidate(tmp_path: Path) -> None:
+    """The master should choose a worker endpoint candidate it can actually reach."""
+
+    worker_port = allocate_port()
+    worker_storage_dir = tmp_path / "worker_storage"
+    worker_app = create_worker_app(
+        default_worker_id="worker_reachable_candidate",
+        storage_dir=worker_storage_dir,
+        bound_host="127.0.0.1",
+        bound_port=worker_port,
+        enable_udp_beacon=False,
+        enable_master_discovery=False,
+    )
+    worker_server = make_server("127.0.0.1", worker_port, worker_app)
+    worker_thread = threading.Thread(target=worker_server.serve_forever, daemon=True)
+    worker_thread.start()
+    time.sleep(0.1)
+
+    try:
+        config_path = tmp_path / "config_extended.json"
+        write_extended_config(config_path, [allocate_port(), allocate_port()])
+        config_payload = json.loads(config_path.read_text(encoding="utf-8"))
+        config_payload["workers"] = []
+        config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+
+        service = FederatedMasterDFS(load_config(config_path), upload_dir=tmp_path / "uploads")
+        response_payload = service.register_worker(
+            worker_id="worker_reachable_candidate",
+            endpoint="http://10.255.255.1:5000",
+            endpoint_candidates=[f"http://127.0.0.1:{worker_port}"],
+        )
+
+        assert response_payload["endpoint"] == f"http://127.0.0.1:{worker_port}"
+        assert service.runtime_config_snapshot()["workers"][0]["endpoint"] == f"http://127.0.0.1:{worker_port}"
+    finally:
+        worker_server.shutdown()
+        worker_thread.join(timeout=5)
+
+
+def test_worker_registration_payload_includes_endpoint_candidates(tmp_path: Path, monkeypatch) -> None:
+    """Worker self-registration should provide alternate endpoint candidates to the master."""
+
+    monkeypatch.setattr("worker.worker_dfs.get_all_lan_ips", lambda: ["10.0.0.8", "192.168.1.20"])
+    worker_app = create_worker_app(
+        default_worker_id="worker_candidates",
+        storage_dir=tmp_path / "storage",
+        bound_host="0.0.0.0",
+        bound_port=5000,
+        enable_udp_beacon=False,
+        enable_master_discovery=False,
+    )
+    state = worker_app.config["WORKER_STATE"]
+
+    assert "http://10.0.0.8:5000" in state.endpoint_candidates
+    assert "http://192.168.1.20:5000" in state.endpoint_candidates
