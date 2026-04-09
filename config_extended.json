@@ -29,14 +29,5 @@
   "dashboard": {
     "poll_interval_ms": 1500
   },
-  "workers": [
-    {
-      "worker_id": "worker_1",
-      "endpoint": "http://127.0.0.1:5001"
-    },
-    {
-      "worker_id": "worker_2",
-      "endpoint": "http://127.0.0.1:5002"
-    }
-  ]
+  "workers": []
 }

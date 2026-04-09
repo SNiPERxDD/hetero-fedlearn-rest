@@ -28,6 +28,8 @@ from sklearn.preprocessing import StandardScaler
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_UDP_DISCOVERY_PORT = 54321
+DEFAULT_DISCOVERY_INTERVAL_SECONDS = 3.0
+DEFAULT_AUTOSTART_WAIT_SECONDS = 120.0
 
 
 def get_lan_ip() -> str:
@@ -66,6 +68,72 @@ def get_lan_ip() -> str:
                 pass
 
     return "127.0.0.1"
+
+
+def private_broadcast_candidates(lan_ip: str) -> tuple[str, ...]:
+    """Return directed broadcast candidates for common RFC1918 LAN layouts."""
+
+    octets = lan_ip.split(".")
+    if len(octets) != 4 or not all(part.isdigit() for part in octets):
+        return ()
+
+    first_octet, second_octet, third_octet, _ = (int(part) for part in octets)
+    candidates: list[str] = []
+
+    def append_candidate(candidate: str) -> None:
+        """Append a candidate once while preserving order."""
+
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    if first_octet == 10:
+        append_candidate(f"{first_octet}.{second_octet}.{third_octet}.255")
+        append_candidate(f"{first_octet}.{second_octet}.255.255")
+        append_candidate(f"{first_octet}.255.255.255")
+    elif first_octet == 172 and 16 <= second_octet <= 31:
+        append_candidate(f"{first_octet}.{second_octet}.{third_octet}.255")
+        append_candidate(f"{first_octet}.{second_octet}.255.255")
+    elif first_octet == 192 and second_octet == 168:
+        append_candidate(f"{first_octet}.{second_octet}.{third_octet}.255")
+        append_candidate(f"{first_octet}.{second_octet}.255.255")
+    else:
+        append_candidate(f"{first_octet}.{second_octet}.{third_octet}.255")
+
+    return tuple(candidates)
+
+
+def master_beacon_targets(lan_ip: str) -> tuple[str, ...]:
+    """Return UDP targets used by the master discovery beacon."""
+
+    targets = ["255.255.255.255"]
+    for candidate in private_broadcast_candidates(lan_ip):
+        if candidate not in targets:
+            targets.append(candidate)
+    if lan_ip and lan_ip not in targets:
+        targets.append(lan_ip)
+    return tuple(targets)
+
+
+def master_discovery_beacon_thread(master_endpoint: str, discovery_port: int) -> None:
+    """Broadcast the master's HTTP endpoint so workers can self-register with no arguments."""
+
+    lan_ip = master_endpoint.removeprefix("http://").removeprefix("https://").split(":", 1)[0]
+    payload = {
+        "node_type": "master",
+        "master_endpoint": master_endpoint,
+        "master_lan_ip": lan_ip,
+    }
+    beacon_bytes = json.dumps(payload).encode("utf-8")
+    targets = master_beacon_targets(lan_ip)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as beacon_socket:
+        beacon_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        while True:
+            for target in targets:
+                try:
+                    beacon_socket.sendto(beacon_bytes, (target, discovery_port))
+                except OSError:
+                    LOGGER.debug("Master beacon send failed for target %s on UDP %s.", target, discovery_port)
+            time.sleep(DEFAULT_DISCOVERY_INTERVAL_SECONDS)
 
 
 def udp_discovery_listener(runtime_service: "FederatedMasterDFS", discovery_port: int) -> None:
@@ -601,6 +669,10 @@ class FederatedMasterDFS:
                     worker["endpoint"] = resolved_endpoint
                     worker_registered = True
                     break
+                if worker["endpoint"] == resolved_endpoint:
+                    worker["worker_id"] = resolved_worker_id
+                    worker_registered = True
+                    break
             if not worker_registered:
                 next_workers.append({"worker_id": resolved_worker_id, "endpoint": resolved_endpoint})
 
@@ -1088,6 +1160,25 @@ class FederatedMasterDFS:
             self.training_thread.start()
             return True
 
+    def autostart_training_when_workers_ready(self) -> None:
+        """Wait for at least one healthy worker before starting training automatically."""
+
+        wait_timeout_seconds = float(
+            self.network_config.get("autostart_wait_seconds", DEFAULT_AUTOSTART_WAIT_SECONDS)
+        )
+        deadline = time.time() + wait_timeout_seconds
+        while time.time() < deadline:
+            if self.workers:
+                worker_health = self.refresh_worker_health()
+                if any(worker["healthy"] for worker in worker_health.values()):
+                    self.start_training_thread()
+                    return
+            time.sleep(1.0)
+
+        self.state.fail(
+            "No healthy workers were discovered before the automatic training startup timeout expired."
+        )
+
     def wait_for_training(self, timeout: float | None = None) -> None:
         """Join the background training thread."""
 
@@ -1102,6 +1193,8 @@ def create_app(
     autostart: bool = False,
     service: FederatedMasterDFS | None = None,
     enable_udp_discovery: bool | None = None,
+    bound_host: str = "0.0.0.0",
+    bound_port: int = 18080,
 ) -> Flask:
     """Create and configure the DFS-lite master Flask application."""
 
@@ -1113,6 +1206,8 @@ def create_app(
     app.config["MASTER_SERVICE"] = runtime_service
     app.config["CONFIG_PATH"] = str(config_path)
     app.config["MASTER_LAN_IP"] = get_lan_ip()
+    advertised_host = app.config["MASTER_LAN_IP"] if bound_host in {"0.0.0.0", "::"} else bound_host
+    app.config["MASTER_ENDPOINT"] = f"http://{advertised_host}:{bound_port}"
 
     discovery_port = int(runtime_service.network_config.get("discovery_port", DEFAULT_UDP_DISCOVERY_PORT))
     if enable_udp_discovery is None:
@@ -1132,9 +1227,24 @@ def create_app(
             name=f"master-udp-discovery-{discovery_port}",
         )
         discovery_thread.start()
+        beacon_thread = threading.Thread(
+            target=master_discovery_beacon_thread,
+            kwargs={
+                "master_endpoint": app.config["MASTER_ENDPOINT"],
+                "discovery_port": discovery_port,
+            },
+            daemon=True,
+            name=f"master-udp-beacon-{discovery_port}",
+        )
+        beacon_thread.start()
 
     if autostart:
-        runtime_service.start_training_thread()
+        autostart_thread = threading.Thread(
+            target=runtime_service.autostart_training_when_workers_ready,
+            daemon=True,
+            name="master-training-autostart",
+        )
+        autostart_thread.start()
 
     @app.get("/")
     def index() -> str:
@@ -1165,6 +1275,7 @@ def create_app(
             "enabled": bool(app.config["UDP_DISCOVERY_ENABLED"]),
             "port": int(app.config["UDP_DISCOVERY_PORT"]),
             "master_lan_ip": str(app.config["MASTER_LAN_IP"]),
+            "master_endpoint": str(app.config["MASTER_ENDPOINT"]),
         }
         return jsonify(status_payload)
 
@@ -1276,7 +1387,12 @@ def main() -> int:
 
     args = build_argument_parser().parse_args()
     configure_logging(args.log_level)
-    app = create_app(config_path=args.config, autostart=args.auto_start)
+    app = create_app(
+        config_path=args.config,
+        autostart=args.auto_start,
+        bound_host=args.host,
+        bound_port=args.port,
+    )
     try:
         from waitress import serve
     except ImportError:

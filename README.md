@@ -1,6 +1,6 @@
 # Hetero FedLearn REST
 
-[![Tests](https://img.shields.io/badge/tests-25%20passed-1f6feb)](./README.md#-verification)
+[![Tests](https://img.shields.io/badge/tests-29%20passed-1f6feb)](./README.md#-verification)
 [![Runtime](https://img.shields.io/badge/runtime-baseline%20%2B%20DFS--lite-0a7f6f)](./README.md#-operating-modes)
 [![Launchers](https://img.shields.io/badge/launchers-python--first-c26a14)](./README.md#-preferred-entry-points)
 [![Workers](https://img.shields.io/badge/workers-http%20%2B%20zeroconf-5b6b73)](./README.md#-deployment-paths)
@@ -21,7 +21,7 @@ The repository is structured as an engineering runtime first, not a demo shell: 
 
 ## ◇ Current State
 
-- Verified suite state: `25 passed`
+- Verified suite state: `29 passed`
 - Verified DFS-lite validation accuracy: `0.9737`
 - Preferred master launcher: `start_master.py`
 - Preferred worker launcher: `start_worker.py`
@@ -51,7 +51,7 @@ The repository is structured as an engineering runtime first, not a demo shell: 
 - `master/master_dfs.py` upgrades the master into a NameNode-style service with a background training thread, live telemetry APIs, worker registration, dataset upload controls, and a dashboard on `/`.
 - `worker/worker_dfs.py` upgrades the worker into a DataNode-style service that persists blocks to disk, reloads them per round, serves storage or compute telemetry on `/`, and now broadcasts its LAN endpoint over UDP for zero-config master discovery.
 - `config.json` defines the baseline dataset, model hyperparameters, training schedule, timeouts, retries, and worker endpoints.
-- `config_extended.json` defines the DFS-lite dashboard poll rate, block replication factor, and UDP discovery settings used by zero-config worker auto-registration.
+- `config_extended.json` now boots with an empty worker list and relies on runtime discovery, so fresh masters no longer ship with stale localhost worker placeholders.
 - `worker/Dockerfile` packages the baseline worker on `python:3.14-slim` with Flask, Waitress, scikit-learn, and a native Docker health check.
 - `worker/Dockerfile_extended` packages the DFS-lite worker with templates and a persistent datanode storage directory.
 - `scripts/windows/onboard_worker.ps1` automates Windows worker setup for Tailscale installation or login, OpenSSH Server and key placement, firewall hardening, native or Docker worker launch, and optional master registration.
@@ -177,9 +177,12 @@ python3 -m master.master --config config.json --log-level INFO
 ### ◎ Zero-Configuration LAN Discovery
 
 - Workers broadcast a UDP beacon every 3 seconds with payload fields `worker_id` and `endpoint`.
-- The master listens on UDP `54321` by default, auto-registers discovered workers, and updates `/api/status` without manual endpoint editing.
+- The master also broadcasts its own HTTP endpoint every 3 seconds, so zero-arg workers can learn where to register without `--master-endpoint`.
+- Both sides listen on UDP `54321` by default, which lets the cluster converge from either startup order: master-first or worker-first.
+- The master auto-registers discovered workers and updates `/api/status` without manual endpoint editing.
 - Worker endpoints are advertised as `http://<lan_ip>:<port>`, so master-to-worker traffic uses the LAN interface instead of `127.0.0.1`.
 - Discovery is controlled by `network.enable_udp_discovery` and `network.discovery_port` in `config_extended.json`.
+- Zero-arg startup is now the default path: start the master on one machine, start workers on any other reachable machine, and let the cluster self-register.
 
 If a network blocks UDP broadcast between devices, set explicit discovery unicast targets on the worker side:
 

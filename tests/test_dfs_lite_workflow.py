@@ -550,3 +550,136 @@ def test_worker_beacon_targets_cover_non_class_c_private_networks(monkeypatch) -
     assert "10.136.255.255" in targets
     assert "10.255.255.255" in targets
     assert "10.136.149.171" in targets
+
+
+def test_worker_auto_registers_after_discovering_master_beacon(tmp_path: Path) -> None:
+    """A worker should learn the master endpoint from UDP and self-register."""
+
+    discovery_port = allocate_udp_port()
+    master_port = allocate_port()
+    worker_port = allocate_port()
+    config_path = tmp_path / "config_extended.json"
+    write_extended_config(config_path, [allocate_port(), allocate_port()])
+
+    config_payload = json.loads(config_path.read_text(encoding="utf-8"))
+    config_payload["workers"] = []
+    config_payload["network"]["discovery_port"] = discovery_port
+    config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+
+    master_service = FederatedMasterDFS(load_config(config_path), upload_dir=tmp_path / "uploads")
+    master_app = create_master_app(
+        config_path=config_path,
+        autostart=False,
+        service=master_service,
+        enable_udp_discovery=False,
+        bound_host="127.0.0.1",
+        bound_port=master_port,
+    )
+    master_server = make_server("127.0.0.1", master_port, master_app)
+    master_thread = threading.Thread(target=master_server.serve_forever, daemon=True)
+    master_thread.start()
+    time.sleep(0.1)
+
+    worker_app = create_worker_app(
+        default_worker_id="worker_discovered_master",
+        storage_dir=tmp_path / "worker_storage",
+        bound_host="127.0.0.1",
+        bound_port=worker_port,
+        enable_udp_beacon=False,
+        enable_master_discovery=True,
+        udp_discovery_port=discovery_port,
+    )
+    worker_server = make_server("127.0.0.1", worker_port, worker_app)
+    worker_thread = threading.Thread(target=worker_server.serve_forever, daemon=True)
+    worker_thread.start()
+    time.sleep(0.1)
+
+    try:
+        beacon_payload = {
+            "node_type": "master",
+            "master_endpoint": f"http://127.0.0.1:{master_port}",
+        }
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as beacon_socket:
+            beacon_socket.sendto(json.dumps(beacon_payload).encode("utf-8"), ("127.0.0.1", discovery_port))
+
+        deadline = time.time() + 3.0
+        while time.time() < deadline:
+            workers = master_app.test_client().get("/api/config").get_json()["workers"]
+            if any(worker["worker_id"] == "worker_discovered_master" for worker in workers):
+                break
+            time.sleep(0.1)
+
+        workers = master_app.test_client().get("/api/config").get_json()["workers"]
+        discovered_worker = next(
+            worker for worker in workers if worker["worker_id"] == "worker_discovered_master"
+        )
+        assert discovered_worker["endpoint"] == f"http://127.0.0.1:{worker_port}"
+    finally:
+        master_server.shutdown()
+        master_thread.join(timeout=5)
+        worker_server.shutdown()
+        worker_thread.join(timeout=5)
+
+
+def test_master_autostart_waits_for_worker_registration(tmp_path: Path, monkeypatch) -> None:
+    """Autostart should wait for zero-arg worker registration instead of failing immediately."""
+
+    master_port = allocate_port()
+    worker_port = allocate_port()
+    config_path = tmp_path / "config_extended.json"
+    write_extended_config(config_path, [allocate_port(), allocate_port()])
+
+    config_payload = json.loads(config_path.read_text(encoding="utf-8"))
+    config_payload["workers"] = []
+    config_payload["network"]["autostart_wait_seconds"] = 5.0
+    config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+
+    master_service = FederatedMasterDFS(load_config(config_path), upload_dir=tmp_path / "uploads")
+    master_app = create_master_app(
+        config_path=config_path,
+        autostart=True,
+        service=master_service,
+        enable_udp_discovery=False,
+        bound_host="127.0.0.1",
+        bound_port=master_port,
+    )
+    master_server = make_server("127.0.0.1", master_port, master_app)
+    master_thread = threading.Thread(target=master_server.serve_forever, daemon=True)
+    master_thread.start()
+    time.sleep(0.2)
+
+    worker_storage_dir = tmp_path / "worker_storage"
+    monkeypatch.setenv("MASTER_ENDPOINT", f"http://127.0.0.1:{master_port}")
+    monkeypatch.setenv("ADVERTISED_ENDPOINT", f"http://127.0.0.1:{worker_port}")
+    worker_app = create_worker_app(
+        default_worker_id="worker_autostart",
+        storage_dir=worker_storage_dir,
+        bound_host="127.0.0.1",
+        bound_port=worker_port,
+        enable_udp_beacon=False,
+        enable_master_discovery=False,
+    )
+    worker_server = make_server("127.0.0.1", worker_port, worker_app)
+    worker_thread = threading.Thread(target=worker_server.serve_forever, daemon=True)
+    worker_thread.start()
+
+    try:
+        deadline = time.time() + 30.0
+        while time.time() < deadline:
+            snapshot = master_service.state.snapshot()
+            if snapshot["training_completed"]:
+                break
+            if snapshot["training_error"]:
+                raise AssertionError(snapshot["training_error"])
+            time.sleep(0.2)
+
+        snapshot = master_service.state.snapshot()
+        assert snapshot["training_completed"] is True
+        assert snapshot["training_error"] is None
+        registered_workers = master_app.test_client().get("/api/config").get_json()["workers"]
+        assert any(worker["worker_id"] == "worker_autostart" for worker in registered_workers)
+    finally:
+        master_server.shutdown()
+        master_thread.join(timeout=5)
+        worker_server.shutdown()
+        worker_thread.join(timeout=5)

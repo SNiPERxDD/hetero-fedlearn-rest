@@ -84,6 +84,14 @@ def worker_lan_endpoint(lan_ip: str, port: int) -> str:
     return f"http://{lan_ip}:{port}"
 
 
+def default_advertised_endpoint(bound_host: str, lan_ip: str, port: int) -> str:
+    """Return the default worker endpoint that should be advertised to the master."""
+
+    if bound_host in {"127.0.0.1", "localhost"}:
+        return f"http://127.0.0.1:{port}"
+    return worker_lan_endpoint(lan_ip, port)
+
+
 def private_broadcast_candidates(lan_ip: str) -> tuple[str, ...]:
     """Return additional directed broadcast candidates for RFC1918 networks."""
 
@@ -186,6 +194,71 @@ def udp_beacon_thread(state: "WorkerDFSState") -> None:
                 LOGGER.debug("Failed to send beacon to some targets: %s", failed_targets)
                 
             time.sleep(interval_seconds)
+
+
+def master_discovery_listener(state: "WorkerDFSState") -> None:
+    """Listen for master beacons and self-register without manual endpoint arguments."""
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as listener_socket:
+        listener_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        reuse_port = getattr(socket, "SO_REUSEPORT", None)
+        if reuse_port is not None:
+            try:
+                listener_socket.setsockopt(socket.SOL_SOCKET, reuse_port, 1)
+            except OSError:
+                LOGGER.debug("SO_REUSEPORT is unavailable for worker master discovery listener.")
+
+        try:
+            listener_socket.bind(("0.0.0.0", int(state.udp_discovery_port)))
+        except OSError as error:
+            LOGGER.warning(
+                "Worker master discovery listener could not bind to UDP port %s: %s",
+                state.udp_discovery_port,
+                error,
+            )
+            return
+
+        listener_socket.settimeout(1.0)
+        while True:
+            try:
+                beacon_bytes, _ = listener_socket.recvfrom(2048)
+            except TimeoutError:
+                continue
+            except OSError as error:
+                LOGGER.warning("Worker master discovery listener stopped: %s", error)
+                return
+
+            try:
+                beacon_payload = json.loads(beacon_bytes.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
+
+            master_endpoint = str(beacon_payload.get("master_endpoint", "")).strip().rstrip("/")
+            if not master_endpoint.startswith(("http://", "https://")):
+                continue
+
+            with state.lock:
+                current_master_endpoint = state.master_endpoint
+                current_registration_status = state.last_registration_status
+                advertised_endpoint = state.advertised_endpoint or worker_lan_endpoint(state.lan_ip, state.service_port)
+
+            if current_master_endpoint == master_endpoint and current_registration_status == "connected":
+                continue
+
+            try:
+                state.connect_to_master(
+                    master_endpoint=master_endpoint,
+                    advertised_endpoint=advertised_endpoint,
+                    timeout_seconds=5.0,
+                )
+                LOGGER.info("Worker %s discovered master %s and self-registered.", state.worker_id, master_endpoint)
+            except RuntimeError as error:
+                LOGGER.debug(
+                    "Worker %s heard master beacon from %s but registration is not ready yet: %s",
+                    state.worker_id,
+                    master_endpoint,
+                    error,
+                )
 
 
 def auto_register_master_thread(state: "WorkerDFSState", master_endpoint: str, advertised_endpoint: str) -> None:
@@ -551,6 +624,7 @@ def create_app(
     bound_host: str = "0.0.0.0",
     bound_port: int | None = None,
     enable_udp_beacon: bool | None = None,
+    enable_master_discovery: bool | None = None,
     udp_discovery_port: int | None = None,
 ) -> Flask:
     """Create and configure the DFS-lite worker Flask application."""
@@ -563,13 +637,23 @@ def create_app(
     resolved_lan_ip = get_lan_ip()
     resolved_targets = list(beacon_targets(resolved_lan_ip, explicit_targets))
     master_endpoint = os.environ.get("MASTER_ENDPOINT", "").strip()
-    advertised_endpoint = os.environ.get("ADVERTISED_ENDPOINT", "").strip() or worker_lan_endpoint(resolved_lan_ip, resolved_port)
+    advertised_endpoint = os.environ.get("ADVERTISED_ENDPOINT", "").strip() or default_advertised_endpoint(
+        bound_host,
+        resolved_lan_ip,
+        resolved_port,
+    )
     if enable_udp_beacon is None:
         beacon_enabled = os.environ.get("ENABLE_UDP_BEACON", "1") != "0"
         if "PYTEST_CURRENT_TEST" in os.environ:
             beacon_enabled = False
     else:
         beacon_enabled = bool(enable_udp_beacon)
+    if enable_master_discovery is None:
+        master_discovery_enabled = os.environ.get("ENABLE_MASTER_DISCOVERY", "1") != "0"
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            master_discovery_enabled = False
+    else:
+        master_discovery_enabled = bool(enable_master_discovery)
 
     resolved_storage_dir = Path(storage_dir or os.environ.get("DATANODE_STORAGE_DIR") or (
         Path(__file__).resolve().parent / "datanode_storage"
@@ -581,6 +665,7 @@ def create_app(
         service_port=resolved_port,
         udp_discovery_port=resolved_discovery_port,
         udp_beacon_enabled=beacon_enabled,
+        advertised_endpoint=advertised_endpoint,
         udp_beacon_targets=resolved_targets,
     )
     state.ensure_storage_dir()
@@ -596,6 +681,14 @@ def create_app(
             name=f"worker-udp-beacon-{resolved_port}",
         )
         thread.start()
+    if master_discovery_enabled:
+        discovery_thread = threading.Thread(
+            target=master_discovery_listener,
+            args=(state,),
+            daemon=True,
+            name=f"worker-master-discovery-{resolved_port}",
+        )
+        discovery_thread.start()
 
     if master_endpoint:
         if advertised_endpoint and advertised_endpoint.startswith("http://127.0.0.1") or advertised_endpoint.startswith("http://localhost"):
@@ -754,6 +847,7 @@ def main() -> int:
         bound_host=args.host,
         bound_port=args.port,
         enable_udp_beacon=True,
+        enable_master_discovery=True,
     )
     try:
         from waitress import serve
@@ -766,7 +860,11 @@ def main() -> int:
     return 0
 
 
-app = create_app(default_worker_id=os.environ.get("WORKER_ID"), enable_udp_beacon=False)
+app = create_app(
+    default_worker_id=os.environ.get("WORKER_ID"),
+    enable_udp_beacon=False,
+    enable_master_discovery=False,
+)
 
 
 if __name__ == "__main__":
