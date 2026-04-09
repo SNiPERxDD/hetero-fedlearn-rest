@@ -159,6 +159,10 @@ def test_dashboard_ui_flow(page: Page, dfs_ui_stack: tuple[str, list[str], list[
     assert accuracy_text is not None
     assert float(accuracy_text) >= 0.95
     expect(page.locator("#accuracy-dots circle.dot")).to_have_count(7, timeout=30000)
+    expect(page.locator("#chart-baseline")).not_to_have_text("n/a", timeout=30000)
+    expect(page.locator("#chart-latest")).not_to_have_text("n/a", timeout=30000)
+    expect(page.locator("#chart-best")).not_to_have_text("n/a", timeout=30000)
+    expect(page.locator("#chart-delta")).not_to_have_text("n/a", timeout=30000)
     expect(page.locator("#block-map-body tr")).to_have_count(2, timeout=30000)
     expect(page.locator("#worker-health-body tr")).to_have_count(2, timeout=30000)
 

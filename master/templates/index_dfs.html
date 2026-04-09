@@ -184,7 +184,7 @@
 
     svg {
       width: 100%;
-      height: 250px;
+      height: 290px;
       overflow: visible;
     }
 
@@ -193,12 +193,35 @@
       stroke-width: 1;
     }
 
+    .grid-line {
+      stroke: rgba(20, 34, 43, 0.08);
+      stroke-width: 1;
+      stroke-dasharray: 4 6;
+    }
+
+    .axis-label,
+    .tick-label {
+      fill: var(--muted);
+      font-size: 0.78rem;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    .axis-label {
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
     .line {
       fill: none;
       stroke: var(--accent);
-      stroke-width: 3;
+      stroke-width: 4;
       stroke-linecap: round;
       stroke-linejoin: round;
+    }
+
+    .area {
+      fill: url(#accuracy-fill);
+      opacity: 0.9;
     }
 
     .dot {
@@ -315,6 +338,30 @@
       justify-content: flex-end;
     }
 
+    .chart-meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .chart-stat {
+      border-radius: 18px;
+      padding: 14px 16px;
+      background: var(--panel-strong);
+      border: 1px solid var(--border);
+    }
+
+    .chart-stat .stat-label {
+      font-size: 0.74rem;
+    }
+
+    .chart-stat-value {
+      margin-top: 6px;
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+
     @media (max-width: 1140px) {
       .hero,
       .control-grid,
@@ -325,7 +372,8 @@
 
     @media (max-width: 760px) {
       .form-grid,
-      .hero-stats {
+      .hero-stats,
+      .chart-meta {
         grid-template-columns: 1fr;
       }
 
@@ -482,11 +530,41 @@
         <h2>Global Epoch Chart</h2>
         <div class="chart-frame">
           <svg viewBox="0 0 760 250" role="img" aria-label="Validation accuracy over communication rounds">
+            <defs>
+              <linearGradient id="accuracy-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="rgba(12, 124, 123, 0.26)"></stop>
+                <stop offset="100%" stop-color="rgba(12, 124, 123, 0.02)"></stop>
+              </linearGradient>
+            </defs>
+            <g id="accuracy-grid"></g>
             <line class="axis" x1="30" y1="15" x2="30" y2="220"></line>
             <line class="axis" x1="30" y1="220" x2="730" y2="220"></line>
+            <text class="axis-label" x="30" y="242">Rounds</text>
+            <text class="axis-label" x="6" y="18">Accuracy</text>
+            <polygon class="area" id="accuracy-area" points=""></polygon>
             <polyline class="line" id="accuracy-line" points=""></polyline>
             <g id="accuracy-dots"></g>
+            <g id="accuracy-y-labels"></g>
+            <g id="accuracy-x-labels"></g>
           </svg>
+        </div>
+        <div class="chart-meta">
+          <div class="chart-stat">
+            <div class="stat-label">Baseline</div>
+            <div class="chart-stat-value" id="chart-baseline">n/a</div>
+          </div>
+          <div class="chart-stat">
+            <div class="stat-label">Latest</div>
+            <div class="chart-stat-value" id="chart-latest">n/a</div>
+          </div>
+          <div class="chart-stat">
+            <div class="stat-label">Best</div>
+            <div class="chart-stat-value" id="chart-best">n/a</div>
+          </div>
+          <div class="chart-stat">
+            <div class="stat-label">Net Gain</div>
+            <div class="chart-stat-value" id="chart-delta">n/a</div>
+          </div>
         </div>
         <p class="status-note">Round 0 is the pre-training baseline. The chart updates on every poll cycle.</p>
       </div>
@@ -580,31 +658,100 @@
 
     function renderChart(history) {
       const line = document.getElementById("accuracy-line");
+      const area = document.getElementById("accuracy-area");
       const dots = document.getElementById("accuracy-dots");
+      const grid = document.getElementById("accuracy-grid");
+      const yLabels = document.getElementById("accuracy-y-labels");
+      const xLabels = document.getElementById("accuracy-x-labels");
+      const baselineStat = document.getElementById("chart-baseline");
+      const latestStat = document.getElementById("chart-latest");
+      const bestStat = document.getElementById("chart-best");
+      const deltaStat = document.getElementById("chart-delta");
       dots.innerHTML = "";
+      grid.innerHTML = "";
+      yLabels.innerHTML = "";
+      xLabels.innerHTML = "";
       if (!history.length) {
         line.setAttribute("points", "");
+        area.setAttribute("points", "");
+        baselineStat.textContent = "n/a";
+        latestStat.textContent = "n/a";
+        bestStat.textContent = "n/a";
+        deltaStat.textContent = "n/a";
         return;
       }
 
+      const chartLeft = 48;
+      const chartRight = 718;
+      const chartTop = 22;
+      const chartBottom = 208;
+      const chartHeight = chartBottom - chartTop;
       const maxRound = Math.max(...history.map((point) => point.round_number), totalRounds, 1);
       const minAccuracy = Math.min(...history.map((point) => point.validation_accuracy));
       const maxAccuracy = Math.max(...history.map((point) => point.validation_accuracy));
       const floor = Math.max(0, minAccuracy - 0.05);
       const ceiling = Math.min(1, maxAccuracy + 0.02);
+      const steps = 4;
+      const baseline = history[0].validation_accuracy;
+      const latest = history[history.length - 1].validation_accuracy;
+      const best = Math.max(...history.map((point) => point.validation_accuracy));
+
+      baselineStat.textContent = formatNumber(baseline);
+      latestStat.textContent = formatNumber(latest);
+      bestStat.textContent = formatNumber(best);
+      deltaStat.textContent = `${latest >= baseline ? "+" : ""}${formatNumber(latest - baseline)}`;
+
+      for (let step = 0; step <= steps; step += 1) {
+        const ratio = step / steps;
+        const y = chartBottom - chartHeight * ratio;
+        const tickValue = floor + (ceiling - floor) * ratio;
+
+        const gridLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        gridLine.setAttribute("class", "grid-line");
+        gridLine.setAttribute("x1", chartLeft);
+        gridLine.setAttribute("y1", y);
+        gridLine.setAttribute("x2", chartRight);
+        gridLine.setAttribute("y2", y);
+        grid.appendChild(gridLine);
+
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.setAttribute("class", "tick-label");
+        label.setAttribute("x", 8);
+        label.setAttribute("y", y + 4);
+        label.textContent = formatNumber(tickValue, 3);
+        yLabels.appendChild(label);
+      }
 
       const points = history.map((point) => {
-        const x = 30 + (700 * point.round_number) / maxRound;
-        const y = 220 - ((point.validation_accuracy - floor) / Math.max(ceiling - floor, 0.001)) * 190;
+        const x = chartLeft + ((chartRight - chartLeft) * point.round_number) / maxRound;
+        const y = chartBottom - ((point.validation_accuracy - floor) / Math.max(ceiling - floor, 0.001)) * chartHeight;
         const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         circle.setAttribute("class", "dot");
         circle.setAttribute("cx", x);
         circle.setAttribute("cy", y);
         circle.setAttribute("r", 5);
+        const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        title.textContent = `Round ${point.round_number}: accuracy ${formatNumber(point.validation_accuracy)} · loss ${formatNumber(point.validation_loss)}`;
+        circle.appendChild(title);
         dots.appendChild(circle);
         return `${x},${y}`;
       });
 
+      const labelRounds = new Set([0, Math.max(1, Math.ceil(maxRound / 2)), maxRound]);
+      for (const round of labelRounds) {
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.setAttribute("class", "tick-label");
+        label.setAttribute("x", chartLeft + ((chartRight - chartLeft) * round) / maxRound);
+        label.setAttribute("y", 236);
+        label.setAttribute("text-anchor", round === 0 ? "start" : round === maxRound ? "end" : "middle");
+        label.textContent = `R${round}`;
+        xLabels.appendChild(label);
+      }
+
+      area.setAttribute(
+        "points",
+        `${chartLeft},${chartBottom} ${points.join(" ")} ${chartRight},${chartBottom}`,
+      );
       line.setAttribute("points", points.join(" "));
     }
 
