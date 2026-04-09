@@ -6,7 +6,9 @@ import argparse
 import json
 import logging
 import os
+import re
 import socket
+import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
@@ -25,6 +27,63 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_UDP_DISCOVERY_PORT = 54321
 
 
+def append_ipv4_candidate(candidates: list[str], raw_value: str) -> None:
+    """Append a valid non-loopback IPv4 address once while preserving order."""
+
+    try:
+        address = IPv4Address(str(raw_value).strip())
+    except ValueError:
+        return
+    if (
+        address.is_loopback
+        or address.is_multicast
+        or address.is_unspecified
+        or address.is_link_local
+        or int(address) == 0xFFFFFFFF
+    ):
+        return
+    normalised = str(address)
+    if normalised not in candidates:
+        candidates.append(normalised)
+
+
+def parse_interface_ipv4_addresses(command_output: str) -> list[str]:
+    """Extract candidate IPv4 addresses from OS network command output."""
+
+    candidates: list[str] = []
+    output = command_output or ""
+    patterns = [
+        re.compile(r"IPv4[^:\n]*:\s*((?:\d{1,3}\.){3}\d{1,3})", re.IGNORECASE),
+        re.compile(r"\binet\s+((?:\d{1,3}\.){3}\d{1,3})(?:/\d+)?\b", re.IGNORECASE),
+    ]
+    for pattern in patterns:
+        for match in pattern.finditer(output):
+            append_ipv4_candidate(candidates, match.group(1))
+    return candidates
+
+
+def discover_os_ipv4_addresses() -> list[str]:
+    """Query OS networking tools for additional non-loopback IPv4 addresses."""
+
+    commands = [["ipconfig"], ["ipconfig", "/all"]] if os.name == "nt" else [["ip", "-4", "addr", "show"], ["ifconfig"]]
+    candidates: list[str] = []
+    for command in commands:
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                check=False,
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+            )
+        except OSError:
+            continue
+        for address in parse_interface_ipv4_addresses(completed.stdout):
+            append_ipv4_candidate(candidates, address)
+    return candidates
+
+
 def get_all_lan_ips() -> list[str]:
     """Enumerate all non-loopback IPv4 addresses on this host."""
     
@@ -35,9 +94,7 @@ def get_all_lan_ips() -> list[str]:
         hostname = socket.gethostname()
         results = socket.getaddrinfo(hostname, None, socket.AF_INET, socket.SOCK_DGRAM)
         for _, _, _, _, sockaddr in results:
-            ip = sockaddr[0]
-            if ip and ip != "127.0.0.1" and ip not in ips:
-                ips.append(ip)
+            append_ipv4_candidate(ips, sockaddr[0])
     except (OSError, socket.gaierror):
         pass
     
@@ -45,9 +102,7 @@ def get_all_lan_ips() -> list[str]:
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe_socket:
         try:
             probe_socket.connect(("8.8.8.8", 80))
-            ip = str(probe_socket.getsockname()[0])
-            if ip and ip != "127.0.0.1" and ip not in ips:
-                ips.append(ip)
+            append_ipv4_candidate(ips, probe_socket.getsockname()[0])
         except OSError:
             pass
     
@@ -57,11 +112,14 @@ def get_all_lan_ips() -> list[str]:
             try:
                 probe_socket.connect(external_host)
                 ip = str(probe_socket.getsockname()[0])
-                if ip and ip != "127.0.0.1" and ip not in ips:
-                    ips.append(ip)
+                if ip not in ips:
+                    append_ipv4_candidate(ips, ip)
                     break  # Found one, stop
             except OSError:
                 pass
+
+    for ip in discover_os_ipv4_addresses():
+        append_ipv4_candidate(ips, ip)
     
     return ips
 

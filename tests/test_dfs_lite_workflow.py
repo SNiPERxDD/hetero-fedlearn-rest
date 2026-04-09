@@ -13,7 +13,11 @@ from pathlib import Path
 from werkzeug.serving import make_server
 
 from master.master_dfs import FederatedMasterDFS, create_app as create_master_app, load_config
-from worker.worker_dfs import beacon_targets, create_app as create_worker_app
+from worker.worker_dfs import (
+    beacon_targets,
+    create_app as create_worker_app,
+    parse_interface_ipv4_addresses,
+)
 from sklearn.datasets import make_classification
 
 
@@ -681,6 +685,27 @@ def test_worker_beacon_targets_cover_non_class_c_private_networks(monkeypatch) -
     assert "10.136.255.255" in targets
     assert "10.255.255.255" in targets
     assert "10.136.149.171" in targets
+
+
+def test_parse_interface_ipv4_addresses_extracts_windows_and_posix_candidates() -> None:
+    """Interface parsing should recover usable IPv4 addresses from OS command output."""
+
+    parsed = parse_interface_ipv4_addresses(
+        """
+        Wireless LAN adapter Wi-Fi:
+           IPv4 Address. . . . . . . . . . . : 10.136.149.227
+           Autoconfiguration IPv4 Address. . : 169.254.1.2
+        3: wlan0    inet 192.168.1.44/24 brd 192.168.1.255 scope global wlan0
+        tailscale0: inet 100.73.60.2 netmask 255.255.255.255
+        """
+    )
+
+    assert "10.136.149.227" in parsed
+    assert "192.168.1.44" in parsed
+    assert "100.73.60.2" in parsed
+    assert "169.254.1.2" not in parsed
+    assert "192.168.1.255" not in parsed
+    assert "255.255.255.255" not in parsed
 
 
 def test_worker_auto_registers_after_discovering_master_beacon(tmp_path: Path) -> None:
