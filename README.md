@@ -1,6 +1,6 @@
 # Hetero FedLearn REST
 
-[![Tests](https://img.shields.io/badge/tests-31%20passed-1f6feb)](./README.md#-verification)
+[![Tests](https://img.shields.io/badge/tests-33%20passed-1f6feb)](./README.md#-verification)
 [![Runtime](https://img.shields.io/badge/runtime-baseline%20%2B%20DFS--lite-0a7f6f)](./README.md#-operating-modes)
 [![Launchers](https://img.shields.io/badge/launchers-python--first-c26a14)](./README.md#-preferred-entry-points)
 [![Workers](https://img.shields.io/badge/workers-http%20%2B%20zeroconf-5b6b73)](./README.md#-deployment-paths)
@@ -21,7 +21,7 @@ The repository is structured as an engineering runtime first, not a demo shell: 
 
 ## ◇ Current State
 
-- Verified suite state: `31 passed`
+- Verified suite state: `33 passed`
 - Verified DFS-lite validation accuracy: `0.9737`
 - Preferred master launcher: `start_master.py`
 - Preferred worker launcher: `start_worker.py`
@@ -52,6 +52,7 @@ The repository is structured as an engineering runtime first, not a demo shell: 
 - `worker/worker_dfs.py` upgrades the worker into a DataNode-style service that persists blocks to disk, reloads them per round, serves storage or compute telemetry on `/`, and now broadcasts its LAN endpoint over UDP for zero-config master discovery.
 - `config.json` defines the baseline dataset, model hyperparameters, training schedule, timeouts, retries, and worker endpoints.
 - `config_extended.json` now boots with an empty worker list and relies on runtime discovery, so fresh masters no longer ship with stale localhost worker placeholders.
+- Builtin dataset options now include `breast_cancer` and the larger `digits` classification dataset.
 - `worker/Dockerfile` packages the baseline worker on `python:3.14-slim` with Flask, Waitress, scikit-learn, and a native Docker health check.
 - `worker/Dockerfile_extended` packages the DFS-lite worker with templates and a persistent datanode storage directory.
 - `scripts/windows/onboard_worker.ps1` automates Windows worker setup for Tailscale installation or login, OpenSSH Server and key placement, firewall hardening, native or Docker worker launch, and optional master registration.

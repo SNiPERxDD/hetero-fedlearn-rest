@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import numpy as np
 import socket
 import threading
 import time
@@ -740,3 +741,18 @@ def test_worker_registration_payload_includes_endpoint_candidates(tmp_path: Path
 
     assert "http://10.0.0.8:5000" in state.endpoint_candidates
     assert "http://192.168.1.20:5000" in state.endpoint_candidates
+
+
+def test_dfs_master_accepts_digits_as_builtin_dataset(tmp_path: Path) -> None:
+    """The DFS-lite master should accept digits as a larger builtin dataset option."""
+
+    config_path = tmp_path / "config_extended.json"
+    write_extended_config(config_path, [allocate_port(), allocate_port()])
+    service = FederatedMasterDFS(load_config(config_path), upload_dir=tmp_path / "uploads")
+
+    updated_config = service.update_runtime_config({"dataset": {"name": "digits"}})
+    features, labels = service.load_dataset()
+
+    assert updated_config["dataset"]["name"] == "digits"
+    assert features.shape[0] > 1000
+    assert len(np.unique(labels)) == 10

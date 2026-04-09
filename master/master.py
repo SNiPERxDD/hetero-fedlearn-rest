@@ -13,13 +13,18 @@ from typing import Any, Sequence
 import numpy as np
 import requests
 from requests import Session
-from sklearn.datasets import load_breast_cancer
+from sklearn.datasets import load_breast_cancer, load_digits
 from sklearn.linear_model import SGDClassifier
 from sklearn.metrics import accuracy_score, log_loss
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 LOGGER = logging.getLogger(__name__)
+
+SUPPORTED_BUILTIN_DATASETS = {
+    "breast_cancer": load_breast_cancer,
+    "digits": load_digits,
+}
 
 
 @dataclass(frozen=True)
@@ -204,9 +209,9 @@ class FederatedMaster:
         source = self.dataset_config.get("source", "builtin")
         if source == "builtin":
             dataset_name = self.dataset_config.get("name", "breast_cancer")
-            if dataset_name != "breast_cancer":
+            if dataset_name not in SUPPORTED_BUILTIN_DATASETS:
                 raise ValueError(f"Unsupported builtin dataset: {dataset_name}")
-            return load_breast_cancer(return_X_y=True)
+            return SUPPORTED_BUILTIN_DATASETS[dataset_name](return_X_y=True)
 
         if source == "csv":
             csv_path = self.dataset_config.get("csv_path")

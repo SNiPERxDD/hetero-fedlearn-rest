@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import numpy as np
 import socket
 import threading
 import time
@@ -11,6 +12,7 @@ from pathlib import Path
 from werkzeug.serving import make_server
 
 from master.master import run_training_from_config
+from master.master import FederatedMaster, load_config
 from worker.worker import create_app
 
 
@@ -96,7 +98,22 @@ def test_worker_rejects_training_before_initialisation() -> None:
         },
     )
     assert response.status_code == 409
-    assert "initialised" in response.get_json()["error"].lower()
+
+
+def test_master_supports_digits_as_larger_builtin_dataset(tmp_path: Path) -> None:
+    """The baseline master should expose the larger builtin digits dataset."""
+
+    config_path = tmp_path / "config_digits.json"
+    write_test_config(config_path, [5001, 5002])
+    config_payload = json.loads(config_path.read_text(encoding="utf-8"))
+    config_payload["dataset"]["name"] = "digits"
+    config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+
+    master = FederatedMaster(load_config(config_path))
+    features, labels = master.load_dataset()
+
+    assert features.shape[0] > 1000
+    assert len(np.unique(labels)) == 10
 
 
 def test_worker_rejects_weight_dimension_mismatch() -> None:

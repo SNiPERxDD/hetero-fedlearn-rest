@@ -19,7 +19,7 @@ import numpy as np
 import requests
 from flask import Flask, jsonify, render_template, request
 from requests import Session
-from sklearn.datasets import load_breast_cancer
+from sklearn.datasets import load_breast_cancer, load_digits
 from sklearn.linear_model import SGDClassifier
 from sklearn.metrics import accuracy_score, log_loss
 from sklearn.model_selection import train_test_split
@@ -30,6 +30,10 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_UDP_DISCOVERY_PORT = 54321
 DEFAULT_DISCOVERY_INTERVAL_SECONDS = 3.0
 DEFAULT_AUTOSTART_WAIT_SECONDS = 120.0
+SUPPORTED_BUILTIN_DATASETS = {
+    "breast_cancer": load_breast_cancer,
+    "digits": load_digits,
+}
 
 
 def get_lan_ip() -> str:
@@ -610,8 +614,10 @@ class FederatedMasterDFS:
                 self.dataset_config["source"] = source
             if "name" in dataset_payload:
                 dataset_name = str(dataset_payload["name"]).strip()
-                if self.dataset_config.get("source", "builtin") == "builtin" and dataset_name != "breast_cancer":
-                    raise ValueError("Only the builtin 'breast_cancer' dataset is currently supported.")
+                if self.dataset_config.get("source", "builtin") == "builtin" and dataset_name not in SUPPORTED_BUILTIN_DATASETS:
+                    raise ValueError(
+                        "Builtin dataset must be one of: " + ", ".join(sorted(SUPPORTED_BUILTIN_DATASETS))
+                    )
                 self.dataset_config["name"] = dataset_name
             if "validation_fraction" in dataset_payload:
                 validation_fraction = float(dataset_payload["validation_fraction"])
@@ -789,9 +795,9 @@ class FederatedMasterDFS:
         source = self.dataset_config.get("source", "builtin")
         if source == "builtin":
             dataset_name = self.dataset_config.get("name", "breast_cancer")
-            if dataset_name != "breast_cancer":
+            if dataset_name not in SUPPORTED_BUILTIN_DATASETS:
                 raise ValueError(f"Unsupported builtin dataset: {dataset_name}")
-            return load_breast_cancer(return_X_y=True)
+            return SUPPORTED_BUILTIN_DATASETS[dataset_name](return_X_y=True)
 
         if source == "csv":
             csv_path = self.dataset_config.get("csv_path")
