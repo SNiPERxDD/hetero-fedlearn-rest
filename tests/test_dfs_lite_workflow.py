@@ -391,6 +391,26 @@ def test_master_start_endpoint_is_idempotent(tmp_path: Path) -> None:
                 server.stop()
 
 
+def test_master_start_training_refuses_offline_registered_workers(tmp_path: Path) -> None:
+    """The master should fail early when workers are registered but unreachable."""
+
+    worker_port = allocate_port()
+    config_path = tmp_path / "config_extended.json"
+    write_extended_config(config_path, [worker_port])
+    service = FederatedMasterDFS(load_config(config_path))
+    app = create_master_app(config_path=config_path, autostart=False, service=service)
+    client = app.test_client()
+
+    response = client.post("/api/start_training")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["started"] is False
+    assert payload["state"]["training_error"] == (
+        "No healthy workers are currently reachable. Start a worker or fix its advertised endpoint before training."
+    )
+
+
 def test_master_runtime_config_and_dataset_upload_workflow(tmp_path: Path) -> None:
     """The master control plane must accept config edits and CSV dataset uploads."""
 

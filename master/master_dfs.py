@@ -1231,6 +1231,12 @@ class FederatedMasterDFS:
                     "No workers are currently registered. Start workers and let UDP discovery register them first."
                 )
                 return False
+            worker_health = self.refresh_worker_health()
+            if not any(worker["healthy"] for worker in worker_health.values()):
+                self.state.fail(
+                    "No healthy workers are currently reachable. Start a worker or fix its advertised endpoint before training."
+                )
+                return False
             self.training_thread = threading.Thread(target=self.run_training, daemon=True)
             self.training_thread.start()
             return True
