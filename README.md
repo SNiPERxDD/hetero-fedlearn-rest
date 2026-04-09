@@ -197,6 +197,49 @@ python3 start_worker.py --allow-unsupported-python --master-endpoint http://10.1
 
 When the worker is running on the same network but the dashboard still does not show it, this direct registration path is the fallback to use.
 
+#### Troubleshooting Cross-Machine Discovery
+
+The system uses multi-target UDP beacons and LAN IP enumeration for robust discovery. If a worker on the same LAN is not auto-discovered:
+
+1. **Check LAN IP detection on the worker:**
+   ```bash
+   python3 -c "from worker.worker_dfs import get_all_lan_ips; print(get_all_lan_ips())"
+   ```
+   This should return a list of non-loopback IPv4 addresses. If it returns `[]` or only `['127.0.0.1']`, the worker's network interface enumeration failed.
+
+2. **Verify UDP beacons are being broadcast:**
+   On Linux/macOS, run `tcpdump` on the master or worker to capture beacons:
+   ```bash
+   sudo tcpdump -i any -n udp port 54321
+   ```
+   You should see JSON payloads like `{"worker_id": "worker_1", "endpoint": "http://10.x.x.x:5000"}`.
+
+3. **Check for UDP broadcast filtering:**
+   If UDP beacons are not reaching the master, the network may block broadcast traffic. Use the explicit master-endpoint fallback:
+   ```bash
+   python3 start_worker.py --allow-unsupported-python \
+     --master-endpoint http://<master-lan-ip>:18080 \
+     --advertised-endpoint http://<worker-lan-ip>:5000
+   ```
+
+4. **Verify LAN connectivity:**
+   From the worker, ping the master's LAN IP:
+   ```bash
+   ping <master-lan-ip>
+   ```
+   Then try to reach the registration endpoint:
+   ```bash
+   curl http://<master-lan-ip>:18080/api/status
+   ```
+
+5. **Enable debug logging:**
+   Set `LOG_LEVEL=DEBUG` when starting the services to see which beacon targets are being used:
+   ```bash
+   LOG_LEVEL=DEBUG python3 start_worker.py --allow-unsupported-python
+   LOG_LEVEL=DEBUG python3 start_master.py --allow-unsupported-python
+   ```
+   Look for log lines like `Beacon targets for 10.x.x.x: [...]` to see which addresses are being probed.
+
 ### ◎ Local Demo Bootstrap
 
 For the fastest local dashboard demo on macOS or Linux, run:

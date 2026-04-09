@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-04-09 16:45:32 IST
+- Enhanced cross-network LAN detection by implementing multi-target IP enumeration in both `master_dfs.py` and `worker_dfs.py`: new `get_all_lan_ips()` function probes external addresses (8.8.8.8, 1.1.1.1, 9.9.9.9) to find the routing interface, enumerates all addresses from `socket.getaddrinfo()` on the hostname, and returns the most reliable non-loopback IPv4 address. This fixes Windows worker auto-discovery on restricted LANs that may return 127.0.0.1 from single-shot probes. Files: `worker/worker_dfs.py`, `master/master_dfs.py`, `CHANGELOG.md`
+- Extended UDP beacon targets to include all detected LAN IPs plus their directed subnet broadcasts, improving robustness on multi-homed hosts or VPN-bridged networks. Added debug logging to beacon threads to capture which targets are being used. Files: `worker/worker_dfs.py`, `CHANGELOG.md`
+- Added comprehensive cross-machine troubleshooting section to README with steps to verify LAN IP detection, capture UDP beacons with tcpdump, test network connectivity, and enable debug logging for discovery issues. Files: `README.md`, `CHANGELOG.md`
+- Improved UDP discovery listener logging on the master to include sender IP addresses and reduce duplicate beacon spam by logging every 10th copy instead of silently dropping. Files: `master/master_dfs.py`, `CHANGELOG.md`
+
 ## 2026-04-09 16:11:47 IST
 - Hardened cross-machine worker discovery by extending beacon targets beyond limited broadcast to include directed subnet broadcast plus optional explicit unicast discovery targets via `UDP_DISCOVERY_TARGETS`, improving visibility across LANs that filter broadcast traffic. Files: `worker/worker_dfs.py`, `README.md`, `CHANGELOG.md`
 - Updated the worker launcher so Python versions below 3.14 are allowed by default unless `ALLOW_UNSUPPORTED_PYTHON=0` is set, and added `--udp-discovery-targets` to pass explicit fallback discovery destinations in native or Docker modes. Files: `start_worker.py`, `CHANGELOG.md`

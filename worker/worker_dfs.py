@@ -25,26 +25,56 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_UDP_DISCOVERY_PORT = 54321
 
 
-def get_lan_ip() -> str:
-    """Return the best-effort LAN IPv4 address for this host."""
-
+def get_all_lan_ips() -> list[str]:
+    """Enumerate all non-loopback IPv4 addresses on this host."""
+    
+    ips: list[str] = []
+    
+    # Try getaddrinfo on hostname to get all known addresses
+    try:
+        hostname = socket.gethostname()
+        results = socket.getaddrinfo(hostname, None, socket.AF_INET, socket.SOCK_DGRAM)
+        for _, _, _, _, sockaddr in results:
+            ip = sockaddr[0]
+            if ip and ip != "127.0.0.1" and ip not in ips:
+                ips.append(ip)
+    except (OSError, socket.gaierror):
+        pass
+    
+    # Try socket probe to external address (detects routing interface)
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe_socket:
         try:
             probe_socket.connect(("8.8.8.8", 80))
-            lan_ip = str(probe_socket.getsockname()[0])
-            if lan_ip and lan_ip != "127.0.0.1":
-                return lan_ip
+            ip = str(probe_socket.getsockname()[0])
+            if ip and ip != "127.0.0.1" and ip not in ips:
+                ips.append(ip)
         except OSError:
             pass
+    
+    # Try alternative external addresses for more robust detection
+    for external_host in [("1.1.1.1", 80), ("9.9.9.9", 80)]:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe_socket:
+            try:
+                probe_socket.connect(external_host)
+                ip = str(probe_socket.getsockname()[0])
+                if ip and ip != "127.0.0.1" and ip not in ips:
+                    ips.append(ip)
+                    break  # Found one, stop
+            except OSError:
+                pass
+    
+    return ips
 
-    try:
-        hostname = socket.gethostname()
-        hostname_ip = socket.gethostbyname(hostname)
-        if hostname_ip and hostname_ip != "127.0.0.1":
-            return hostname_ip
-    except (OSError, socket.gaierror):
-        pass
 
+def get_lan_ip() -> str:
+    """Return the best-effort LAN IPv4 address for this host."""
+    
+    ips = get_all_lan_ips()
+    if ips:
+        LOGGER.debug("Detected LAN IPs: %s, using: %s", ips, ips[0])
+        return ips[0]
+    
+    LOGGER.warning("No non-loopback IPv4 addresses detected, falling back to 127.0.0.1")
     return "127.0.0.1"
 
 
@@ -58,15 +88,31 @@ def beacon_targets(lan_ip: str, extra_targets: Sequence[str] | None = None) -> t
     """Return UDP discovery targets for robust LAN and same-host registration."""
 
     targets: list[str] = ["255.255.255.255"]
+    
+    # Add directed broadcast for the detected LAN
     octets = lan_ip.split(".")
     if len(octets) == 4 and all(part.isdigit() for part in octets):
         directed_broadcast = f"{octets[0]}.{octets[1]}.{octets[2]}.255"
         if directed_broadcast not in targets:
             targets.append(directed_broadcast)
 
+    # Add the primary LAN IP itself
     if lan_ip and lan_ip not in targets:
         targets.append(lan_ip)
+    
+    # Add all other detected LAN IPs as additional targets for robustness
+    all_ips = get_all_lan_ips()
+    for ip in all_ips:
+        if ip not in targets:
+            targets.append(ip)
+        # Also add directed broadcast for each detected IP
+        ip_octets = ip.split(".")
+        if len(ip_octets) == 4 and all(part.isdigit() for part in ip_octets):
+            ip_directed_broadcast = f"{ip_octets[0]}.{ip_octets[1]}.{ip_octets[2]}.255"
+            if ip_directed_broadcast not in targets:
+                targets.append(ip_directed_broadcast)
 
+    # Add explicit extra targets
     for target in extra_targets or []:
         try:
             normalised_target = str(IPv4Address(str(target).strip()))
@@ -75,6 +121,7 @@ def beacon_targets(lan_ip: str, extra_targets: Sequence[str] | None = None) -> t
         if normalised_target not in targets:
             targets.append(normalised_target)
 
+    LOGGER.debug("Beacon targets for %s: %s", lan_ip, targets)
     return tuple(targets)
 
 
@@ -83,6 +130,7 @@ def udp_beacon_thread(state: "WorkerDFSState") -> None:
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as beacon_socket:
         beacon_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        beacon_log_count = 0
         while True:
             with state.lock:
                 payload = {
@@ -94,11 +142,23 @@ def udp_beacon_thread(state: "WorkerDFSState") -> None:
                 targets = tuple(state.udp_beacon_targets or beacon_targets(state.lan_ip))
 
             beacon_bytes = json.dumps(payload).encode("utf-8")
+            beacon_log_count += 1
+            
+            # Log every 10th beacon to avoid log spam
+            if beacon_log_count % 10 == 0:
+                LOGGER.debug("Broadcasting beacon for %s to targets: %s (port %s)", 
+                           payload["worker_id"], targets, discovery_port)
+            
+            failed_targets = []
             for target in targets:
                 try:
                     beacon_socket.sendto(beacon_bytes, (target, discovery_port))
-                except OSError:
-                    continue
+                except OSError as e:
+                    failed_targets.append((target, str(e)))
+            
+            if failed_targets and beacon_log_count % 10 == 0:
+                LOGGER.debug("Failed to send beacon to some targets: %s", failed_targets)
+                
             time.sleep(interval_seconds)
 
 

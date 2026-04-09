@@ -33,6 +33,7 @@ DEFAULT_UDP_DISCOVERY_PORT = 54321
 def get_lan_ip() -> str:
     """Return the best-effort LAN IPv4 address for this host."""
 
+    # Try socket probe to external address (detects routing interface)
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe_socket:
         try:
             probe_socket.connect(("8.8.8.8", 80))
@@ -42,13 +43,27 @@ def get_lan_ip() -> str:
         except OSError:
             pass
 
+    # Try getaddrinfo on hostname to get all known addresses
     try:
         hostname = socket.gethostname()
-        hostname_ip = socket.gethostbyname(hostname)
-        if hostname_ip and hostname_ip != "127.0.0.1":
-            return hostname_ip
+        results = socket.getaddrinfo(hostname, None, socket.AF_INET, socket.SOCK_DGRAM)
+        for _, _, _, _, sockaddr in results:
+            ip = sockaddr[0]
+            if ip and ip != "127.0.0.1":
+                return ip
     except (OSError, socket.gaierror):
         pass
+
+    # Try alternative external addresses for more robust detection
+    for external_host in [("1.1.1.1", 80), ("9.9.9.9", 80)]:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe_socket:
+            try:
+                probe_socket.connect(external_host)
+                ip = str(probe_socket.getsockname()[0])
+                if ip and ip != "127.0.0.1":
+                    return ip
+            except OSError:
+                pass
 
     return "127.0.0.1"
 
@@ -57,6 +72,7 @@ def udp_discovery_listener(runtime_service: "FederatedMasterDFS", discovery_port
     """Listen for worker UDP beacons and auto-register discovered endpoints."""
 
     known_endpoints: dict[str, str] = {}
+    beacon_log_count = 0
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as listener_socket:
         listener_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         reuse_port = getattr(socket, "SO_REUSEPORT", None)
@@ -80,7 +96,8 @@ def udp_discovery_listener(runtime_service: "FederatedMasterDFS", discovery_port
         LOGGER.info("UDP worker discovery listener active on 0.0.0.0:%s", discovery_port)
         while True:
             try:
-                beacon_bytes, _sender = listener_socket.recvfrom(2048)
+                beacon_bytes, sender_addr = listener_socket.recvfrom(2048)
+                beacon_log_count += 1
             except TimeoutError:
                 continue
             except OSError as error:
@@ -99,14 +116,20 @@ def udp_discovery_listener(runtime_service: "FederatedMasterDFS", discovery_port
             if not endpoint.startswith(("http://", "https://")):
                 continue
             if known_endpoints.get(worker_id) == endpoint:
+                # Log every 10th duplicate to avoid spam
+                if beacon_log_count % 10 == 0:
+                    LOGGER.debug("Duplicate beacon from %s (known endpoint: %s) sent from %s", 
+                               worker_id, endpoint, sender_addr[0])
                 continue
 
             try:
                 runtime_service.register_worker(worker_id=worker_id, endpoint=endpoint)
                 known_endpoints[worker_id] = endpoint
-                LOGGER.info("Discovered worker %s at %s via UDP beacon.", worker_id, endpoint)
+                LOGGER.info("Discovered worker %s at %s via UDP beacon from %s", 
+                           worker_id, endpoint, sender_addr[0])
             except (RuntimeError, ValueError) as error:
-                LOGGER.debug("Worker beacon ignored for %s (%s)", worker_id, error)
+                LOGGER.debug("Worker beacon ignored for %s (%s) from %s", 
+                           worker_id, error, sender_addr[0])
 
 
 @dataclass(frozen=True)
