@@ -84,33 +84,59 @@ def worker_lan_endpoint(lan_ip: str, port: int) -> str:
     return f"http://{lan_ip}:{port}"
 
 
+def private_broadcast_candidates(lan_ip: str) -> tuple[str, ...]:
+    """Return additional directed broadcast candidates for RFC1918 networks."""
+
+    octets = lan_ip.split(".")
+    if len(octets) != 4 or not all(part.isdigit() for part in octets):
+        return ()
+
+    first_octet, second_octet, third_octet, _ = (int(part) for part in octets)
+    candidates: list[str] = []
+
+    def append_candidate(candidate: str) -> None:
+        """Append a broadcast candidate only once while preserving order."""
+
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    if first_octet == 10:
+        append_candidate(f"{first_octet}.{second_octet}.{third_octet}.255")
+        append_candidate(f"{first_octet}.{second_octet}.255.255")
+        append_candidate(f"{first_octet}.255.255.255")
+    elif first_octet == 172 and 16 <= second_octet <= 31:
+        append_candidate(f"{first_octet}.{second_octet}.{third_octet}.255")
+        append_candidate(f"{first_octet}.{second_octet}.255.255")
+    elif first_octet == 192 and second_octet == 168:
+        append_candidate(f"{first_octet}.{second_octet}.{third_octet}.255")
+        append_candidate(f"{first_octet}.{second_octet}.255.255")
+    else:
+        append_candidate(f"{first_octet}.{second_octet}.{third_octet}.255")
+
+    return tuple(candidates)
+
+
 def beacon_targets(lan_ip: str, extra_targets: Sequence[str] | None = None) -> tuple[str, ...]:
     """Return UDP discovery targets for robust LAN and same-host registration."""
 
     targets: list[str] = ["255.255.255.255"]
-    
-    # Add directed broadcast for the detected LAN
-    octets = lan_ip.split(".")
-    if len(octets) == 4 and all(part.isdigit() for part in octets):
-        directed_broadcast = f"{octets[0]}.{octets[1]}.{octets[2]}.255"
-        if directed_broadcast not in targets:
-            targets.append(directed_broadcast)
+
+    for candidate in private_broadcast_candidates(lan_ip):
+        if candidate not in targets:
+            targets.append(candidate)
 
     # Add the primary LAN IP itself
     if lan_ip and lan_ip not in targets:
         targets.append(lan_ip)
-    
+
     # Add all other detected LAN IPs as additional targets for robustness
     all_ips = get_all_lan_ips()
     for ip in all_ips:
         if ip not in targets:
             targets.append(ip)
-        # Also add directed broadcast for each detected IP
-        ip_octets = ip.split(".")
-        if len(ip_octets) == 4 and all(part.isdigit() for part in ip_octets):
-            ip_directed_broadcast = f"{ip_octets[0]}.{ip_octets[1]}.{ip_octets[2]}.255"
-            if ip_directed_broadcast not in targets:
-                targets.append(ip_directed_broadcast)
+        for candidate in private_broadcast_candidates(ip):
+            if candidate not in targets:
+                targets.append(candidate)
 
     # Add explicit extra targets
     for target in extra_targets or []:

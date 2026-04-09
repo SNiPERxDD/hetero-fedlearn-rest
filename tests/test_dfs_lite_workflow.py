@@ -12,7 +12,7 @@ from pathlib import Path
 from werkzeug.serving import make_server
 
 from master.master_dfs import FederatedMasterDFS, create_app as create_master_app, load_config
-from worker.worker_dfs import create_app as create_worker_app
+from worker.worker_dfs import beacon_targets, create_app as create_worker_app
 from sklearn.datasets import make_classification
 
 
@@ -536,3 +536,17 @@ def test_master_udp_discovery_auto_registers_beaconed_workers(tmp_path: Path) ->
         worker for worker in config_after_discovery["workers"] if worker["worker_id"] == "worker_udp"
     )
     assert discovered_worker["endpoint"] == "http://127.0.0.1:5999"
+
+
+def test_worker_beacon_targets_cover_non_class_c_private_networks(monkeypatch) -> None:
+    """The worker beacon targets should not assume /24-only directed broadcast."""
+
+    monkeypatch.setattr("worker.worker_dfs.get_all_lan_ips", lambda: ["10.136.149.171"])
+
+    targets = beacon_targets("10.136.149.171")
+
+    assert "255.255.255.255" in targets
+    assert "10.136.149.255" in targets
+    assert "10.136.255.255" in targets
+    assert "10.255.255.255" in targets
+    assert "10.136.149.171" in targets
