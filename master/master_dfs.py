@@ -36,9 +36,21 @@ def get_lan_ip() -> str:
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe_socket:
         try:
             probe_socket.connect(("8.8.8.8", 80))
-            return str(probe_socket.getsockname()[0])
+            lan_ip = str(probe_socket.getsockname()[0])
+            if lan_ip and lan_ip != "127.0.0.1":
+                return lan_ip
         except OSError:
-            return "127.0.0.1"
+            pass
+
+    try:
+        hostname = socket.gethostname()
+        hostname_ip = socket.gethostbyname(hostname)
+        if hostname_ip and hostname_ip != "127.0.0.1":
+            return hostname_ip
+    except (OSError, socket.gaierror):
+        pass
+
+    return "127.0.0.1"
 
 
 def udp_discovery_listener(runtime_service: "FederatedMasterDFS", discovery_port: int) -> None:
