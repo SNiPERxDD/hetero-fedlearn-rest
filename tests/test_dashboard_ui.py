@@ -356,3 +356,28 @@ def test_master_dashboard_exposes_digits_builtin_dataset(page: Page, tmp_path: P
         expect(page.locator("#action-banner")).to_contain_text("Builtin dataset selected: digits.", timeout=30000)
     finally:
         master_server.stop()
+
+
+def test_master_dashboard_save_settings_preserves_selected_builtin_dataset(page: Page, tmp_path: Path) -> None:
+    """Saving settings should not reset the selected builtin dataset back to breast_cancer."""
+
+    worker_ports = [allocate_port(), allocate_port()]
+    config_path = tmp_path / "config_extended.json"
+    write_extended_config(config_path, worker_ports, worker_count=0)
+    service = FederatedMasterDFS(load_config(config_path), upload_dir=tmp_path / "uploads")
+    master_port = allocate_port()
+    master_server = LocalServer(master_port, create_master_app(config_path=config_path, autostart=False, service=service))
+    master_server.start()
+
+    try:
+        master_url = f"http://127.0.0.1:{master_port}"
+        page.goto(master_url, wait_until="domcontentloaded")
+        page.locator("#dataset-source").select_option("builtin")
+        page.locator("#dataset-name").select_option("digits")
+        page.locator("#config-rounds").fill("4")
+        page.get_by_role("button", name="Save Settings").click()
+        expect(page.locator("#dataset-summary")).to_contain_text("builtin · digits", timeout=30000)
+        expect(page.locator("#dataset-name")).to_have_value("digits", timeout=30000)
+        expect(page.locator("#action-banner")).to_contain_text("Training settings updated.", timeout=30000)
+    finally:
+        master_server.stop()

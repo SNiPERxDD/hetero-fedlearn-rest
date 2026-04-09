@@ -760,13 +760,21 @@
     async function saveSettings(event) {
       event.preventDefault();
       try {
+        const datasetSource = document.getElementById("dataset-source").value || "builtin";
+        const datasetName = document.getElementById("dataset-name").value || "breast_cancer";
+        const datasetPayload = {
+          validation_fraction: Number(document.getElementById("config-validation-fraction").value),
+          label_column: Number(document.getElementById("dataset-label-column").value),
+        };
+        if (datasetSource === "builtin") {
+          datasetPayload.source = "builtin";
+          datasetPayload.name = datasetName;
+        }
         const payload = await fetchJson("/api/config", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            dataset: {
-              validation_fraction: Number(document.getElementById("config-validation-fraction").value),
-            },
+            dataset: datasetPayload,
             training: {
               rounds: Number(document.getElementById("config-rounds").value),
               local_epochs: Number(document.getElementById("config-local-epochs").value),
