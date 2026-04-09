@@ -596,7 +596,42 @@ class FederatedMasterDFS:
                     {"worker_id": worker.worker_id, "endpoint": worker.endpoint}
                     for worker in self.workers
                 ],
+                "replication": self.replication_status(),
             }
+
+    def effective_replication_factor(self, worker_count: int | None = None) -> int:
+        """Return the replication factor after applying live worker-count limits."""
+
+        available_workers = len(self.workers) if worker_count is None else max(0, int(worker_count))
+        requested_replication_factor = max(1, int(self.training_config.get("replication_factor", 1)))
+        if available_workers == 0:
+            return 0
+        return min(requested_replication_factor, available_workers)
+
+    def replication_status(self, worker_count: int | None = None) -> dict[str, Any]:
+        """Return requested and effective replication metadata for the dashboard."""
+
+        available_workers = len(self.workers) if worker_count is None else max(0, int(worker_count))
+        requested_replication_factor = max(1, int(self.training_config.get("replication_factor", 1)))
+        effective_replication_factor = self.effective_replication_factor(worker_count=available_workers)
+        warning: str | None = None
+        if available_workers == 0:
+            warning = (
+                f"Replication factor {requested_replication_factor} is configured, "
+                "but no workers are currently registered."
+            )
+        elif effective_replication_factor < requested_replication_factor:
+            warning = (
+                f"Replication factor {requested_replication_factor} requested, "
+                f"but only {available_workers} worker(s) are available. "
+                f"Effective replication is {effective_replication_factor}."
+            )
+        return {
+            "requested_factor": requested_replication_factor,
+            "effective_factor": effective_replication_factor,
+            "available_workers": available_workers,
+            "warning": warning,
+        }
 
     def update_runtime_config(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Update editable runtime configuration values safely."""
@@ -857,8 +892,7 @@ class FederatedMasterDFS:
             partition_count=len(self.workers),
             random_seed=self.random_seed,
         )
-        replication_factor = max(1, int(self.training_config.get("replication_factor", 1)))
-        replication_factor = min(replication_factor, len(self.workers))
+        replication_factor = self.effective_replication_factor()
 
         block_payloads: list[tuple[BlockAssignment, np.ndarray, np.ndarray]] = []
         block_map: dict[str, dict[str, Any]] = {}
@@ -1167,6 +1201,8 @@ class FederatedMasterDFS:
                     "local_epochs": local_epochs,
                     "random_seed": self.random_seed,
                     "replication_factor": int(self.training_config.get("replication_factor", 1)),
+                    "effective_replication_factor": self.effective_replication_factor(),
+                    "available_workers": len(self.workers),
                     "train_label_cardinality": int(len(np.unique(train_labels))),
                 },
                 "block_map": self.state.snapshot()["block_map"],
@@ -1316,6 +1352,7 @@ def create_app(
             "master_lan_ip": str(app.config["MASTER_LAN_IP"]),
             "master_endpoint": str(app.config["MASTER_ENDPOINT"]),
         }
+        status_payload["replication"] = runtime_service.replication_status()
         return jsonify(status_payload)
 
     @app.post("/api/start_training")

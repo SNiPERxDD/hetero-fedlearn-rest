@@ -385,3 +385,27 @@ def test_master_dashboard_save_settings_preserves_selected_builtin_dataset(page:
         expect(page.locator("#action-banner")).to_contain_text("Training settings updated.", timeout=30000)
     finally:
         master_server.stop()
+
+
+def test_master_dashboard_shows_effective_replication_warning(page: Page, tmp_path: Path) -> None:
+    """The dashboard should show when requested replication exceeds live worker count."""
+
+    worker_ports = [allocate_port(), allocate_port()]
+    config_path = tmp_path / "config_extended.json"
+    write_extended_config(config_path, worker_ports, worker_count=1)
+    service = FederatedMasterDFS(load_config(config_path), upload_dir=tmp_path / "uploads")
+    master_port = allocate_port()
+    master_server = LocalServer(master_port, create_master_app(config_path=config_path, autostart=False, service=service))
+    master_server.start()
+
+    try:
+        master_url = f"http://127.0.0.1:{master_port}"
+        page.goto(master_url, wait_until="domcontentloaded")
+        page.locator("#config-replication-factor").fill("3")
+        page.get_by_role("button", name="Save Settings").click()
+        expect(page.locator("#replication-note")).to_contain_text(
+            "Replication factor 3 requested, but only 1 worker(s) are available.",
+            timeout=30000,
+        )
+    finally:
+        master_server.stop()

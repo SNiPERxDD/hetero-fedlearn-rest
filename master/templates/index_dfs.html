@@ -447,6 +447,7 @@
           <div class="field">
             <label for="config-replication-factor">Replication Factor</label>
             <input id="config-replication-factor" name="replication_factor" type="number" min="1" value="1">
+            <div class="config-note" id="replication-note">Effective replication depends on how many workers are currently registered.</div>
           </div>
           <div class="field">
             <label for="config-validation-fraction">Validation Fraction</label>
@@ -826,6 +827,7 @@
       const validationLoss = document.getElementById("validation-loss");
       const startButton = document.getElementById("start-training");
       const discoverySummary = document.getElementById("discovery-summary");
+      const replicationNote = document.getElementById("replication-note");
 
       if (state.discovery) {
         const discoveryState = state.discovery.enabled
@@ -852,6 +854,12 @@
       currentRound.textContent = `${state.current_round} / ${state.total_rounds || totalRounds}`;
       validationAccuracy.textContent = formatNumber(state.latest_validation_accuracy);
       validationLoss.textContent = formatNumber(state.latest_validation_loss);
+      if (state.replication) {
+        const warning = state.replication.warning;
+        replicationNote.textContent = warning
+          ? warning
+          : `Effective replication: ${state.replication.effective_factor} across ${state.replication.available_workers} registered worker(s).`;
+      }
 
       renderChart(state.validation_history || []);
       renderWorkerHealth(state.worker_health || []);
@@ -861,6 +869,7 @@
 
     function renderConfig(config) {
       cachedConfig = config;
+      const replicationNote = document.getElementById("replication-note");
       document.getElementById("config-rounds").value = config.training.rounds;
       document.getElementById("config-local-epochs").value = config.training.local_epochs;
       document.getElementById("config-replication-factor").value = config.training.replication_factor || 1;
@@ -872,6 +881,12 @@
       document.getElementById("dataset-summary").textContent = config.dataset.source === "csv"
         ? `Dataset source: csv · ${config.dataset.csv_path || config.dataset.name || "uploaded dataset"}`
         : `Dataset source: builtin · ${config.dataset.name || "breast_cancer"}`;
+      if (config.replication) {
+        const warning = config.replication.warning;
+        replicationNote.textContent = warning
+          ? warning
+          : `Effective replication: ${config.replication.effective_factor} across ${config.replication.available_workers} registered worker(s).`;
+      }
       renderWorkerRegistry(config.workers || []);
     }
 

@@ -72,7 +72,12 @@ def write_csv_dataset(path: Path, features, labels) -> None:
     path.write_text(f"{header}\n" + "\n".join(rows), encoding="utf-8")
 
 
-def write_extended_config(config_path: Path, worker_ports: list[int]) -> None:
+def write_extended_config(
+    config_path: Path,
+    worker_ports: list[int],
+    *,
+    replication_factor: int | None = None,
+) -> None:
     """Write a deterministic DFS-lite configuration for integration tests."""
 
     config = {
@@ -93,7 +98,7 @@ def write_extended_config(config_path: Path, worker_ports: list[int]) -> None:
             "rounds": 6,
             "local_epochs": 4,
             "random_seed": 42,
-            "replication_factor": 2,
+            "replication_factor": replication_factor or min(2, len(worker_ports)),
         },
         "network": {
             "timeout_seconds": 30,
@@ -105,8 +110,8 @@ def write_extended_config(config_path: Path, worker_ports: list[int]) -> None:
             "poll_interval_ms": 250,
         },
         "workers": [
-            {"worker_id": "worker_1", "endpoint": f"http://127.0.0.1:{worker_ports[0]}"},
-            {"worker_id": "worker_2", "endpoint": f"http://127.0.0.1:{worker_ports[1]}"},
+            {"worker_id": f"worker_{index + 1}", "endpoint": f"http://127.0.0.1:{port}"}
+            for index, port in enumerate(worker_ports)
         ],
     }
     config_path.write_text(json.dumps(config), encoding="utf-8")
@@ -205,6 +210,26 @@ def test_worker_train_round_reads_block_from_disk_each_time(tmp_path: Path) -> N
     assert train_response.status_code == 400
 
 
+def test_replication_status_reports_effective_factor_when_workers_are_insufficient(tmp_path: Path) -> None:
+    """Replication status should expose when the requested factor exceeds worker capacity."""
+
+    config_path = tmp_path / "config_extended.json"
+    write_extended_config(config_path, [allocate_port(), allocate_port()])
+    config = load_config(config_path)
+    config["training"]["replication_factor"] = 3
+    config["workers"] = [{"worker_id": "worker_1", "endpoint": "http://127.0.0.1:5000"}]
+
+    service = FederatedMasterDFS(config)
+
+    snapshot = service.runtime_config_snapshot()
+
+    assert snapshot["training"]["replication_factor"] == 3
+    assert snapshot["replication"]["requested_factor"] == 3
+    assert snapshot["replication"]["effective_factor"] == 1
+    assert snapshot["replication"]["available_workers"] == 1
+    assert snapshot["replication"]["warning"] is not None
+
+
 def test_dfs_master_training_thread_and_dashboard(tmp_path: Path) -> None:
     """The DFS-lite master should complete training and expose dashboard state."""
 
@@ -245,6 +270,43 @@ def test_dfs_master_training_thread_and_dashboard(tmp_path: Path) -> None:
         assert status_response.status_code == 200
         assert "DFS-Lite" in dashboard_response.get_data(as_text=True)
         assert status_response.get_json()["training_completed"] is True
+    finally:
+        for server in servers:
+            server.stop()
+
+
+def test_dfs_master_replication_factor_three_commits_each_block_to_three_workers(tmp_path: Path) -> None:
+    """A factor-3 run should write each block to three distinct worker storage directories."""
+
+    worker_ports = [allocate_port(), allocate_port(), allocate_port()]
+    storage_dirs = [
+        tmp_path / "worker_1_storage",
+        tmp_path / "worker_2_storage",
+        tmp_path / "worker_3_storage",
+    ]
+    servers = [
+        LocalDFSWorkerServer(worker_id="worker_1", port=worker_ports[0], storage_dir=storage_dirs[0]),
+        LocalDFSWorkerServer(worker_id="worker_2", port=worker_ports[1], storage_dir=storage_dirs[1]),
+        LocalDFSWorkerServer(worker_id="worker_3", port=worker_ports[2], storage_dir=storage_dirs[2]),
+    ]
+    for server in servers:
+        server.start()
+
+    try:
+        config_path = tmp_path / "config_extended.json"
+        write_extended_config(config_path, worker_ports, replication_factor=3)
+
+        service = FederatedMasterDFS(load_config(config_path))
+        block_payloads, _, _ = service.prepare_blocks()
+        assignments = service.initialise_blocks(block_payloads)
+
+        assert len(assignments) == 3
+        assert all(len(assignment.replicas) == 3 for assignment in assignments)
+        assert all(len(set(assignment.replicas)) == 3 for assignment in assignments)
+
+        for storage_dir in storage_dirs:
+            persisted_blocks = list(storage_dir.glob("*.csv"))
+            assert len(persisted_blocks) == 3
     finally:
         for server in servers:
             server.stop()
