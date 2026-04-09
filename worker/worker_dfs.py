@@ -404,6 +404,20 @@ class WorkerDFSState:
 
         return self.model is not None and self.classes is not None and bool(self.blocks)
 
+    def reset_runtime_state(self, *, clear_disk: bool) -> None:
+        """Reset the in-memory worker model and optionally remove persisted block files."""
+
+        self.model = None
+        self.classes = None
+        self.blocks = {}
+        self.last_local_loss = None
+        self.last_samples_processed = 0
+        self.last_round_number = None
+        if clear_disk:
+            self.ensure_storage_dir()
+            for block_path in self.storage_dir.glob("*.csv"):
+                block_path.unlink(missing_ok=True)
+
     def initialise_block(
         self,
         *,
@@ -433,10 +447,10 @@ class WorkerDFSState:
             self.worker_id = worker_id or self.worker_id
             self.model_config = model_config or self.model_config or {}
 
+            if self.classes is not None and not np.array_equal(self.classes, local_classes):
+                self.reset_runtime_state(clear_disk=True)
             if self.classes is None:
                 self.classes = local_classes
-            elif not np.array_equal(self.classes, local_classes):
-                raise ValueError("All blocks on a worker must share the same class space.")
 
             if self.model is None:
                 self.model = seed_classifier(
@@ -445,7 +459,13 @@ class WorkerDFSState:
                     n_features=local_features.shape[1],
                 )
             elif self.model.coef_.shape[1] != local_features.shape[1]:
-                raise ValueError("All blocks on a worker must share the same feature dimension.")
+                self.reset_runtime_state(clear_disk=True)
+                self.classes = local_classes
+                self.model = seed_classifier(
+                    build_classifier(self.model_config),
+                    classes=self.classes,
+                    n_features=local_features.shape[1],
+                )
 
             block_path = self.storage_dir / f"{block_id}.csv"
             write_block_csv(block_path, local_features, local_labels)

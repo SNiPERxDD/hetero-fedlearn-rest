@@ -756,3 +756,44 @@ def test_dfs_master_accepts_digits_as_builtin_dataset(tmp_path: Path) -> None:
     assert updated_config["dataset"]["name"] == "digits"
     assert features.shape[0] > 1000
     assert len(np.unique(labels)) == 10
+
+
+def test_worker_reinitialises_cleanly_when_dataset_shape_changes(tmp_path: Path) -> None:
+    """A worker should reset stale state when a new dataset with different dimensions arrives."""
+
+    storage_dir = tmp_path / "storage"
+    app = create_worker_app(default_worker_id="worker_reset", storage_dir=storage_dir)
+    client = app.test_client()
+
+    first_response = client.post(
+        "/initialize",
+        json={
+            "block_id": "blk_old",
+            "worker_id": "worker_reset",
+            "features": [[0.1, 0.2], [0.3, 0.4]],
+            "labels": [0, 1],
+            "classes": [0, 1],
+            "model_config": {"random_state": 42},
+        },
+    )
+    assert first_response.status_code == 200
+    assert (storage_dir / "blk_old.csv").exists()
+
+    second_response = client.post(
+        "/initialize",
+        json={
+            "block_id": "blk_new",
+            "worker_id": "worker_reset",
+            "features": [[0.1, 0.2, 0.3], [0.3, 0.4, 0.5]],
+            "labels": [0, 1],
+            "classes": [0, 1],
+            "model_config": {"random_state": 42},
+        },
+    )
+    assert second_response.status_code == 200
+    assert not (storage_dir / "blk_old.csv").exists()
+    assert (storage_dir / "blk_new.csv").exists()
+
+    status_payload = client.get("/api/status").get_json()
+    assert status_payload["block_count"] == 1
+    assert status_payload["blocks"][0]["block_id"] == "blk_new"
