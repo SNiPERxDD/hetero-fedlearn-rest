@@ -870,10 +870,56 @@ def test_master_prefers_reachable_worker_endpoint_candidate(tmp_path: Path) -> N
         response_payload = service.register_worker(
             worker_id="worker_reachable_candidate",
             endpoint="http://10.255.255.1:5000",
-            endpoint_candidates=[f"http://127.0.0.1:{worker_port}"],
+            endpoint_candidates=["http://10.255.255.1:5000", f"http://127.0.0.1:{worker_port}"],
         )
 
         assert response_payload["endpoint"] == f"http://127.0.0.1:{worker_port}"
+        assert service.runtime_config_snapshot()["workers"][0]["endpoint"] == f"http://127.0.0.1:{worker_port}"
+        assert service.runtime_config_snapshot()["workers"][0]["endpoint_candidates"] == [
+            f"http://127.0.0.1:{worker_port}",
+            "http://10.255.255.1:5000",
+        ]
+    finally:
+        worker_server.shutdown()
+        worker_thread.join(timeout=5)
+
+
+def test_master_refresh_worker_health_recovers_to_reachable_endpoint_candidate(tmp_path: Path) -> None:
+    """Worker health refresh should switch to a reachable stored candidate when the primary endpoint is dead."""
+
+    worker_port = allocate_port()
+    worker_storage_dir = tmp_path / "worker_storage"
+    worker_app = create_worker_app(
+        default_worker_id="worker_failover_candidate",
+        storage_dir=worker_storage_dir,
+        bound_host="127.0.0.1",
+        bound_port=worker_port,
+        enable_udp_beacon=False,
+        enable_master_discovery=False,
+    )
+    worker_server = make_server("127.0.0.1", worker_port, worker_app)
+    worker_thread = threading.Thread(target=worker_server.serve_forever, daemon=True)
+    worker_thread.start()
+    time.sleep(0.1)
+
+    try:
+        config_path = tmp_path / "config_extended.json"
+        write_extended_config(config_path, [allocate_port(), allocate_port()])
+        config_payload = json.loads(config_path.read_text(encoding="utf-8"))
+        config_payload["workers"] = [
+            {
+                "worker_id": "worker_failover_candidate",
+                "endpoint": "http://10.255.255.1:5000",
+                "endpoint_candidates": ["http://10.255.255.1:5000", f"http://127.0.0.1:{worker_port}"],
+            }
+        ]
+        config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+
+        service = FederatedMasterDFS(load_config(config_path), upload_dir=tmp_path / "uploads")
+        worker_health = service.refresh_worker_health()
+
+        assert worker_health["worker_failover_candidate"]["healthy"] is True
+        assert worker_health["worker_failover_candidate"]["endpoint"] == f"http://127.0.0.1:{worker_port}"
         assert service.runtime_config_snapshot()["workers"][0]["endpoint"] == f"http://127.0.0.1:{worker_port}"
     finally:
         worker_server.shutdown()

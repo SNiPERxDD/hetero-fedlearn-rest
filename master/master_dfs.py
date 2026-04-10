@@ -215,6 +215,7 @@ class WorkerSpec:
 
     worker_id: str
     endpoint: str
+    endpoint_candidates: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -548,19 +549,34 @@ class FederatedMasterDFS:
         for raw_worker in workers_payload:
             worker_id = str(raw_worker.get("worker_id", "")).strip()
             endpoint = str(raw_worker.get("endpoint", "")).strip().rstrip("/")
+            raw_candidates = raw_worker.get("endpoint_candidates", [])
+            endpoint_candidates: list[str] = []
             if not worker_id:
                 raise ValueError("Each worker requires a non-empty worker_id.")
             if not endpoint:
                 raise ValueError(f"Worker {worker_id!r} requires a non-empty endpoint.")
             if not endpoint.startswith(("http://", "https://")):
                 raise ValueError(f"Worker endpoint {endpoint!r} must start with http:// or https://.")
+            for candidate in [endpoint, *(raw_candidates if isinstance(raw_candidates, Sequence) else [])]:
+                resolved_candidate = str(candidate).strip().rstrip("/")
+                if not resolved_candidate or resolved_candidate in endpoint_candidates:
+                    continue
+                if not resolved_candidate.startswith(("http://", "https://")):
+                    continue
+                endpoint_candidates.append(resolved_candidate)
             if worker_id in seen_worker_ids:
                 raise ValueError(f"Worker id {worker_id!r} is duplicated.")
             if endpoint in seen_endpoints:
                 raise ValueError(f"Worker endpoint {endpoint!r} is duplicated.")
             seen_worker_ids.add(worker_id)
             seen_endpoints.add(endpoint)
-            normalised_workers.append(WorkerSpec(worker_id=worker_id, endpoint=endpoint))
+            normalised_workers.append(
+                WorkerSpec(
+                    worker_id=worker_id,
+                    endpoint=endpoint,
+                    endpoint_candidates=tuple(endpoint_candidates),
+                )
+            )
 
         return normalised_workers
 
@@ -593,7 +609,11 @@ class FederatedMasterDFS:
                 "network": copy.deepcopy(self.network_config),
                 "dashboard": copy.deepcopy(self.dashboard_config),
                 "workers": [
-                    {"worker_id": worker.worker_id, "endpoint": worker.endpoint}
+                    {
+                        "worker_id": worker.worker_id,
+                        "endpoint": worker.endpoint,
+                        "endpoint_candidates": list(worker.endpoint_candidates),
+                    }
                     for worker in self.workers
                 ],
                 "replication": self.replication_status(),
@@ -748,17 +768,39 @@ class FederatedMasterDFS:
             self.ensure_mutable()
             next_workers = self.runtime_config_snapshot()["workers"]
             worker_registered = False
+            persisted_candidates = [
+                candidate
+                for candidate in [resolved_endpoint, *(endpoint_candidates or [])]
+                if str(candidate).strip()
+            ]
             for worker in next_workers:
                 if worker["worker_id"] == resolved_worker_id:
                     worker["endpoint"] = resolved_endpoint
+                    existing_candidates = worker.get("endpoint_candidates", [])
+                    merged_candidates: list[str] = []
+                    for candidate in [*existing_candidates, *persisted_candidates]:
+                        resolved_candidate = str(candidate).strip().rstrip("/")
+                        if not resolved_candidate or resolved_candidate in merged_candidates:
+                            continue
+                        if not resolved_candidate.startswith(("http://", "https://")):
+                            continue
+                        merged_candidates.append(resolved_candidate)
+                    worker["endpoint_candidates"] = merged_candidates
                     worker_registered = True
                     break
                 if worker["endpoint"] == resolved_endpoint:
                     worker["worker_id"] = resolved_worker_id
+                    worker["endpoint_candidates"] = list(persisted_candidates)
                     worker_registered = True
                     break
             if not worker_registered:
-                next_workers.append({"worker_id": resolved_worker_id, "endpoint": resolved_endpoint})
+                next_workers.append(
+                    {
+                        "worker_id": resolved_worker_id,
+                        "endpoint": resolved_endpoint,
+                        "endpoint_candidates": list(dict.fromkeys(persisted_candidates)),
+                    }
+                )
 
             validated_workers = self._normalise_workers(next_workers)
             self.config["workers"] = next_workers
@@ -1028,6 +1070,40 @@ class FederatedMasterDFS:
                     "last_samples_processed": int(payload.get("last_samples_processed", 0)),
                 }
             except RuntimeError:
+                recovered_endpoint = self.resolve_worker_endpoint(worker.endpoint, worker.endpoint_candidates)
+                if recovered_endpoint and recovered_endpoint != worker.endpoint:
+                    with self.config_lock:
+                        next_workers = self.runtime_config_snapshot()["workers"]
+                        for configured_worker in next_workers:
+                            if configured_worker["worker_id"] == worker.worker_id:
+                                configured_worker["endpoint"] = recovered_endpoint
+                                break
+                        validated_workers = self._normalise_workers(next_workers)
+                        self.config["workers"] = next_workers
+                        self.workers = validated_workers
+                        self.worker_map = {configured_worker.worker_id: configured_worker for configured_worker in self.workers}
+                    worker = self.worker_map[worker.worker_id]
+                    try:
+                        payload = self.request_json(
+                            "GET",
+                            worker,
+                            "/api/status",
+                            timeout_seconds=health_timeout_seconds,
+                            retry_attempts=1,
+                        )
+                        worker_health[worker.worker_id] = {
+                            "worker_id": worker.worker_id,
+                            "endpoint": worker.endpoint,
+                            "healthy": True,
+                            "ready": bool(payload.get("ready", False)),
+                            "storage_bytes": int(payload.get("storage_bytes", 0)),
+                            "block_count": int(payload.get("block_count", 0)),
+                            "last_local_loss": payload.get("last_local_loss"),
+                            "last_samples_processed": int(payload.get("last_samples_processed", 0)),
+                        }
+                        continue
+                    except RuntimeError:
+                        pass
                 worker_health[worker.worker_id] = {
                     "worker_id": worker.worker_id,
                     "endpoint": worker.endpoint,
